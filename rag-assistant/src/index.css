@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+:root {
+	font-family: "DM Sans", "Segoe UI", sans-serif;
+	color: #172033;
+	background: #f5f7fb;
+	font-synthesis: none;
+	text-rendering: optimizeLegibility;
+}
+
+body {
+	margin: 0;
+	min-width: 320px;
+}
+
+button,
+input {
+	font: inherit;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+	outline: 3px solid rgba(14, 165, 163, 0.35);
+	outline-offset: 2px;
+}
