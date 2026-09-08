@@ -12,6 +12,19 @@ import { extractTextFromImage } from '../services/ocr.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
+// OCR noise, boxes aur broken characters clean karne ke liye helper
+function cleanOCRText(rawText) {
+  if (!rawText) return '';
+  return rawText
+    // 1. Table borders aur weird symbols (|, □, ■, •, ○) ko space se replace karo
+    .replace(/[|□■•○]/g, ' ')
+    // 2. Alag-alag bikhre single letters ko jodo ("A p p l i c a n t" -> "Applicant")
+    .replace(/(?<=\b[a-zA-Z])\s+(?=[a-zA-Z]\b)/g, '')
+    // 3. Extra spaces aur blank lines clean karo
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n\s*\n/g, '\n')
+    .trim();
+}
 
 // Helper: Universal Layout-Aware PDF Text Extractor with OCR Fallback
 function extractPdfText(buffer) {
@@ -186,6 +199,7 @@ router.post('/upload', authMiddleware, upload.single('file'), async (req, res) =
     } else {
       return res.status(400).json({ error: 'Only PDF, DOCX, TXT, and Image files are supported' });
     }
+    extractedText = cleanOCRText(extractedText);
 
     if (!extractedText.trim()) {
       return res.status(400).json({ error: 'Failed to extract readable text from file.' });
