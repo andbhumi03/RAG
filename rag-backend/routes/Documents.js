@@ -8,6 +8,7 @@ import authMiddleware from '../middleware/auth.js';
 import { chunkText } from '../services/chunking.js';
 import { generateEmbedding } from '../services/embeddings.js';
 import { extractTextFromImage } from '../services/ocr.js';
+import { sanitizePdfText } from '../services/textSanitizer.js';
 
 const router = express.Router();
 
@@ -124,6 +125,8 @@ router.post('/upload', authMiddleware, upload.single('file'), async (req, res) =
       console.error('File Parsing/OCR Error:', parseErr.message);
       return res.status(400).json({ error: 'Failed to extract text from file: ' + parseErr.message });
     }
+
+    extractedText = sanitizePdfText(extractedText);
 
     if (!extractedText || !extractedText.trim()) {
       return res.status(400).json({

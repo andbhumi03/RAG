@@ -9,22 +9,10 @@ import authMiddleware from '../middleware/auth.js';
 import PDFParser from "pdf2json";
 import mammoth from 'mammoth';
 import { extractTextFromImage } from '../services/ocr.js';
+import { sanitizePdfText, cleanOCRText } from '../services/textSanitizer.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage() });
-// OCR noise, boxes aur broken characters clean karne ke liye helper
-function cleanOCRText(rawText) {
-  if (!rawText) return '';
-  return rawText
-    // 1. Table borders aur weird symbols (|, □, ■, •, ○) ko space se replace karo
-    .replace(/[|□■•○]/g, ' ')
-    // 2. Alag-alag bikhre single letters ko jodo ("A p p l i c a n t" -> "Applicant")
-    .replace(/(?<=\b[a-zA-Z])\s+(?=[a-zA-Z]\b)/g, '')
-    // 3. Extra spaces aur blank lines clean karo
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\n\s*\n/g, '\n')
-    .trim();
-}
 
 // Helper: Universal Layout-Aware PDF Text Extractor with OCR Fallback
 function extractPdfText(buffer) {
@@ -72,9 +60,13 @@ function extractPdfText(buffer) {
         }
       });
 
-      // Verification: Agar pdf2json ko bilkul text nahi mila (scanned image PDF hai)
-      if (!fullText.replace(/--- Page \d+ ---/g, '').trim()) {
-        console.warn("pdf2json extracted 0 text (Scanned PDF). Triggering OCR...");
+      // Verification: Scanned PDF check OR Type3 Font Garbled Noise check
+      const rawTextWithoutHeaders = fullText.replace(/--- Page \d+ ---/g, '').trim();
+      const pipeCount = (rawTextWithoutHeaders.match(/\|/g) || []).length;
+      const isType3Garbage = pipeCount > 50; // Type3 fonts har glyph ke saath '|' fragment kar dete hain
+
+      if (!rawTextWithoutHeaders || isType3Garbage) {
+        console.warn("pdf2json extracted empty or garbled Type3 text. Triggering OCR...");
         try {
           const ocrText = await extractTextFromImage(buffer);
           return resolve(ocrText);
