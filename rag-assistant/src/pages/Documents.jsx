@@ -13,7 +13,6 @@ export default function Documents() {
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [lastUploadedDoc, setLastUploadedDoc] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
   const [dragActive, setDragActive] = useState(false);
 
@@ -77,11 +76,9 @@ export default function Documents() {
           createdAt: res.uploadDate || new Date().toISOString()
         };
         setDocuments((prev) => [newDoc, ...prev]);
-        setLastUploadedDoc(file.name);
         showToast(`Document "${file.name}" indexed successfully!`);
       } else {
         await loadDocuments();
-        setLastUploadedDoc(file.name);
         showToast("Document uploaded.");
       }
     } catch (err) {
@@ -199,26 +196,6 @@ export default function Documents() {
             </button>
           </div>
 
-          {/* Post-Ingestion Action Banner */}
-          {lastUploadedDoc && (
-            <div className="mb-4 bg-[#c2e7ff]/40 border border-[#7fcfff] text-[#001d35] px-4 py-3 rounded-2xl flex items-center justify-between shadow-xs animate-fade-in">
-              <div className="flex items-center gap-2.5 text-xs font-semibold">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-                <span>"{lastUploadedDoc}" is indexed and ready!</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => navigate("/chat")}
-                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[#004a77] text-white hover:bg-[#003355] text-xs font-bold transition shadow-xs cursor-pointer"
-              >
-                <span>Ask Questions in Chat</span>
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-                </svg>
-              </button>
-            </div>
-          )}
-
           {/* Stable Static Alert Notification (Replaced floating popup) */}
           {toast.show && (
             <div className="mb-4 bg-[#f0f4f9] border border-[#a8c7fa] text-[#004a77] font-semibold text-xs py-2.5 px-4 rounded-xl flex items-center gap-2 shrink-0 transition-all">
@@ -234,8 +211,8 @@ export default function Documents() {
             onDragLeave={handleDrag}
             onDrop={handleDrop}
             className={`border-2 border-dashed rounded-3xl p-6 text-center transition-all duration-300 mb-6 shrink-0 relative overflow-hidden ${dragActive
-                ? "border-sky-500 bg-sky-500/5"
-                : "border-[#e3e8ef] bg-[#f0f4f9] hover:border-[#a8c7fa] hover:bg-[#e3e8ef]/60"
+              ? "border-sky-500 bg-sky-500/5"
+              : "border-[#e3e8ef] bg-[#f0f4f9] hover:border-[#a8c7fa] hover:bg-[#e3e8ef]/60"
               } shadow-xs`}
           >
             <input
@@ -254,9 +231,6 @@ export default function Documents() {
                 <div className="flex flex-col items-center">
                   <LoadingSpinner />
                   <h3 className="text-sm font-bold text-[#1f1f1f] mt-3">Processing Document...</h3>
-                  <p className="text-xs text-[#5f6368] mt-0.5 max-w-xs leading-relaxed">
-                    Extracting layout text and compiling vector dimensions in database.
-                  </p>
                 </div>
               ) : (
                 <div className="flex flex-col items-center">
@@ -322,17 +296,6 @@ export default function Documents() {
                           {new Date(doc.createdAt).toLocaleDateString()}
                         </td>
                         <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => navigate("/chat")}
-                            className="inline-flex items-center gap-1.5 text-[#1a73e8] hover:text-white hover:bg-[#1a73e8] bg-[#c2e7ff]/30 px-3 py-1.5 rounded-xl font-bold text-xs transition cursor-pointer"
-                            title="Chat with your documents"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                            </svg>
-                            <span>Chat</span>
-                          </button>
                           <button
                             onClick={() => handleDelete(doc._id)}
                             disabled={deletingId === doc._id}

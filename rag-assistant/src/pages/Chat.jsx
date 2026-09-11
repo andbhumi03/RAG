@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { getChatHistory, getChatMessages, createNewChat, deleteChat } from "../api/chat";
@@ -12,6 +12,99 @@ import Layout from "../components/Layout";
 const LoadingSpinner = () => (
   <div className="animate-spin rounded-full h-5 w-5 border-2 border-[#a8c7fa] border-t-[#1a73e8] shrink-0" />
 );
+
+// Clean user error message: strips technical SDK leaks, status codes, and internal JSON
+const cleanUserErrorMessage = (rawError) => {
+  if (!rawError) return "Unable to complete request. Please try again.";
+
+  let errText = typeof rawError === "string" ? rawError : (rawError.message || String(rawError));
+
+  // If errText contains serialized JSON
+  if (errText.trim().startsWith("{") || errText.includes('"error"')) {
+    try {
+      const match = errText.match(/(\{.*\})/s);
+      if (match) {
+        const parsed = JSON.parse(match[1]);
+        if (parsed.error) {
+          errText = typeof parsed.error === "string" ? parsed.error : (parsed.error.message || errText);
+        }
+      }
+    } catch {
+      // not JSON
+    }
+  }
+
+  const lower = errText.toLowerCase();
+
+  // Rate limit / Quota / TPM
+  if (
+    lower.includes("429") ||
+    lower.includes("413") ||
+    lower.includes("rate_limit") ||
+    lower.includes("rate limit") ||
+    lower.includes("tokens per minute") ||
+    lower.includes("tpm") ||
+    lower.includes("rpm") ||
+    lower.includes("quota") ||
+    lower.includes("too large for model") ||
+    lower.includes("billing")
+  ) {
+    return "The AI service is currently experiencing high demand. Please wait a few moments and try again.";
+  }
+
+  // Model unavailable / 404 / 503 / decommissioned
+  if (
+    lower.includes("404") ||
+    lower.includes("502") ||
+    lower.includes("503") ||
+    lower.includes("504") ||
+    lower.includes("model_not_found") ||
+    lower.includes("model_decommissioned") ||
+    lower.includes("does not exist") ||
+    lower.includes("not available") ||
+    lower.includes("decommissioned") ||
+    lower.includes("overloaded") ||
+    lower.includes("service unavailable") ||
+    lower.includes("groq")
+  ) {
+    return "The AI assistant is temporarily unavailable. Please try again in a few moments.";
+  }
+
+  // Guardrails / safety
+  if (
+    lower.includes("guardrail") ||
+    lower.includes("safety") ||
+    lower.includes("content filter") ||
+    lower.includes("content_filter") ||
+    lower.includes("moderation") ||
+    lower.includes("blocked")
+  ) {
+    return "I cannot generate a response for this request due to content safety guidelines. Please ask another question about your documents.";
+  }
+
+  // Database / Mongoose
+  if (
+    lower.includes("validation failed") ||
+    lower.includes("path 'content'") ||
+    lower.includes("content: path") ||
+    lower.includes("mongo") ||
+    lower.includes("database")
+  ) {
+    return "A temporary system error occurred while processing your request. Please try again.";
+  }
+
+  // Network / HTTP status
+  if (
+    lower.includes("failed to fetch") ||
+    lower.includes("networkerror") ||
+    lower.includes("streaming request failed") ||
+    lower.includes("500")
+  ) {
+    return "A network error occurred while contacting the server. Please check your connection and try again.";
+  }
+
+  return errText;
+};
 
 export default function Chat() {
   const [activeTab, setActiveTab] = useState("chat");
@@ -58,23 +151,30 @@ export default function Chat() {
     return () => window.removeEventListener("click", handleOutsideClick);
   }, [exportOpen]);
 
+  // Instant direct positioning to the recent message on load/switch before browser paint
+  useLayoutEffect(() => {
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+  }, [messages, activeChatId]);
+
+  // Secondary guard to ensure bottom scroll after any Markdown rendering or layout pass
   useEffect(() => {
-    if (isSwitchingChatRef.current) {
-      isSwitchingChatRef.current = false;
+    const scrollToLatest = () => {
       if (chatContainerRef.current) {
         chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
       }
-      messagesEndRef.current?.scrollIntoView({ behavior: "instant" });
-      requestAnimationFrame(() => {
-        if (chatContainerRef.current) {
-          chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-        }
-        messagesEndRef.current?.scrollIntoView({ behavior: "instant" });
-      });
-    } else {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages, loading]);
+    };
+
+    scrollToLatest();
+    const frameId = requestAnimationFrame(scrollToLatest);
+    const timerId = setTimeout(scrollToLatest, 50);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      clearTimeout(timerId);
+    };
+  }, [messages, activeChatId, loading]);
 
   // Toast trigger helper
   const showToast = (message, type = "success") => {
@@ -257,11 +357,12 @@ export default function Chat() {
             });
           }
           if (payload.error) {
+            const friendly = cleanUserErrorMessage(payload.error);
             setMessages((prev) => {
               const updated = [...prev];
               const idx = targetIndex !== null ? targetIndex : updated.length - 1;
               if (idx >= 0 && (updated[idx].sender === "ai" || updated[idx].role === "assistant")) {
-                updated[idx] = { ...updated[idx], text: payload.error };
+                updated[idx] = { ...updated[idx], text: friendly, isError: true };
               }
               return updated;
             });
@@ -303,11 +404,12 @@ export default function Chat() {
     } catch (error) {
       if (error.name !== "AbortError") {
         console.error("Streaming error:", error);
+        const friendly = cleanUserErrorMessage(error.message);
         setMessages((prev) => {
           const updated = [...prev];
           const idx = targetIndex !== null ? targetIndex : updated.length - 1;
           if (idx >= 0 && (updated[idx].sender === "ai" || updated[idx].role === "assistant") && !updated[idx].text) {
-            updated[idx] = { ...updated[idx], text: error.message || "Unable to generate an answer. Please try again." };
+            updated[idx] = { ...updated[idx], text: friendly, isError: true };
           }
           return updated;
         });
@@ -365,6 +467,7 @@ export default function Chat() {
         sender: "ai",
         text: "",
         content: "",
+        isError: false,
         sources: []
       };
       return updated;
@@ -747,7 +850,21 @@ export default function Chat() {
                             </div>
                           ) : (
                             <>
-                              {formatResponseSystematically(msg.text ?? msg.content ?? "")}
+                              {msg.isError || (typeof (msg.text ?? msg.content) === 'string' && ((msg.text ?? msg.content).includes('"error":') || (msg.text ?? msg.content).includes('Path \'content\'') || (msg.text ?? msg.content).includes('tokens per minute'))) ? (
+                                <div className="flex flex-col gap-2 p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200 text-amber-900 max-w-lg shadow-xs my-1">
+                                  <div className="flex items-center gap-2">
+                                    <svg className="w-4 h-4 text-amber-600 shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                                    </svg>
+                                    <span className="font-bold text-xs text-amber-800">System Notice</span>
+                                  </div>
+                                  <p className="text-xs text-amber-900 leading-relaxed font-medium">
+                                    {cleanUserErrorMessage(msg.text ?? msg.content ?? "")}
+                                  </p>
+                                </div>
+                              ) : (
+                                formatResponseSystematically(msg.text ?? msg.content ?? "")
+                              )}
 
                               {msg.sources && msg.sources.length > 0 && (
                                 <div className="mt-4 pt-3 border-t border-[#e3e8ef] flex flex-col gap-2">
