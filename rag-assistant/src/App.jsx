@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Provider } from "react-redux";
 import { store } from "./store/store";
@@ -10,34 +9,7 @@ import Documents from "./pages/Documents";
 import Chat from "./pages/Chat";
 
 function AppRoutes() {
-  const { setUser, loading, setLoading } = useAuth();
-
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (token) {
-      fetch("http://localhost:5000/api/auth/me", {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-        .then(async (res) => {
-          if (res.ok) {
-            const data = await res.json();
-            setUser(data.user);
-          } else {
-            localStorage.removeItem("token");
-            setUser(null);
-          }
-        })
-        .catch(() => {
-          localStorage.removeItem("token");
-          setUser(null);
-        })
-        .finally(() => {
-          setLoading(false);
-        });
-    } else {
-      setLoading(false);
-    }
-  }, [setUser, setLoading]);
+  const { user, loading } = useAuth();
 
   if (loading) {
     return (
@@ -50,8 +22,8 @@ function AppRoutes() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<Signup />} />
+        <Route path="/login" element={user ? <Navigate to="/chat" replace /> : <Login />} />
+        <Route path="/signup" element={user ? <Navigate to="/chat" replace /> : <Signup />} />
         <Route
           path="/documents"
           element={

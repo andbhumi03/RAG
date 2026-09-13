@@ -556,9 +556,8 @@ export default function Chat() {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await api.post("/documents/upload", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      // Let the browser set the multipart boundary automatically.
+      const res = await api.post("/documents/upload", formData);
 
       if (res.data) {
         const newDoc = {
@@ -576,7 +575,7 @@ export default function Chat() {
       }
     } catch (err) {
       console.error(err);
-      alert(err.response?.data?.error || "Failed to upload document.");
+      alert(err.response?.data?.error || err.message || "Failed to upload document.");
     } finally {
       setUploading(false);
     }

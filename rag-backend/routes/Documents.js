@@ -21,15 +21,27 @@ const upload = multer({
 const parsePdfBuffer = (buffer) => {
   return new Promise((resolve, reject) => {
     const pdfParser = new PDFParser(null, 1);
+    let settled = false;
+
+    const fail = (error) => {
+      if (!settled) {
+        settled = true;
+        reject(error);
+      }
+    };
 
     pdfParser.on("pdfParser_dataError", (err) => {
-      reject(new Error(err.parserError || "Failed to parse PDF structure"));
+      fail(new Error(err.parserError || "Failed to parse PDF structure"));
     });
 
     pdfParser.on("pdfParser_dataReady", (pdfData) => {
       let fullText = "";
 
       try {
+        if (!pdfData?.Pages?.length) {
+          return fail(new Error("PDF does not contain readable pages"));
+        }
+
         pdfData.Pages.forEach((page, pageIndex) => {
           let pageText = "";
           const lines = {};
@@ -37,16 +49,14 @@ const parsePdfBuffer = (buffer) => {
           page.Texts.forEach((textItem) => {
             const y = Math.round(textItem.y * 10) / 10;
 
-            // Safe decode to prevent URI malformed crash
-            let rawText = textItem.R[0].T;
+            // PDF text can contain malformed percent escapes.
+            let rawText = textItem.R?.[0]?.T || '';
             try {
               rawText = decodeURIComponent(rawText);
             } catch (e) {
-              try {
-                rawText = unescape(rawText);
-              } catch (innerErr) {
-                // Keep raw text if decoding fails completely
-              }
+              rawText = rawText.replace(/%([0-9A-Fa-f]{2})/g, (match, hex) =>
+                String.fromCharCode(parseInt(hex, 16))
+              );
             }
 
             if (!lines[y]) lines[y] = [];
@@ -68,13 +78,22 @@ const parsePdfBuffer = (buffer) => {
           }
         });
 
+        if (!fullText.trim()) {
+          return fail(new Error("PDF contains no extractable text"));
+        }
+
+        settled = true;
         resolve(fullText);
       } catch (parseEx) {
-        reject(parseEx);
+        fail(parseEx);
       }
     });
 
-    pdfParser.parseBuffer(buffer);
+    try {
+      pdfParser.parseBuffer(buffer);
+    } catch (parseEx) {
+      fail(parseEx);
+    }
   });
 };
 
@@ -140,15 +159,6 @@ router.post('/upload', authMiddleware, upload.single('file'), async (req, res) =
       return res.status(400).json({ error: 'Failed to split document into chunks.' });
     }
 
-    // Save main Document
-    const document = await Document.create({
-      userId: req.userId,
-      fileName,
-      chunkCount: chunks.length,
-      status: 'processed',
-      createdAt: new Date(),
-    });
-
     // Batch Processing Embeddings
     const BATCH_SIZE = 4;
     const chunkDocs = [];
@@ -161,33 +171,47 @@ router.post('/upload', authMiddleware, upload.single('file'), async (req, res) =
           if (!chunkItem || !chunkItem.trim()) return null;
           try {
             const embedding = await generateEmbedding(chunkItem);
-            if (!embedding) return null;
+            if (!Array.isArray(embedding) || embedding.length === 0) {
+              throw new Error('Embedding service returned an empty vector');
+            }
 
             return {
               userId: req.userId,
-              documentId: document._id,
               chunkText: chunkItem,
               embedding: embedding,
             };
           } catch (embErr) {
-            console.error('Embedding error for chunk:', embErr.message);
-            return null;
+            throw new Error(`Embedding generation failed: ${embErr.message}`);
           }
         })
       );
 
-      chunkDocs.push(...batchResults.filter(Boolean));
+      chunkDocs.push(...batchResults);
     }
 
-    if (chunkDocs.length > 0) {
-      await Chunk.insertMany(chunkDocs);
+    if (chunkDocs.length === 0) {
+      return res.status(502).json({ error: 'Failed to generate embeddings for the extracted PDF text.' });
     }
+
+    // Save the document only after extraction and embeddings have succeeded.
+    const document = await Document.create({
+      userId: req.userId,
+      fileName,
+      chunkCount: chunkDocs.length,
+      status: 'processed',
+      createdAt: new Date(),
+    });
+
+    await Chunk.insertMany(chunkDocs.map((chunk) => ({
+      ...chunk,
+      documentId: document._id,
+    })));
 
     return res.status(201).json({
       documentId: document._id,
       fileName: document.fileName,
       status: document.status,
-      chunkCount: document.chunkCount,
+      chunkCount: chunkDocs.length,
       uploadDate: document.createdAt,
     });
 

@@ -28,16 +28,27 @@ function isModelAvailabilityError(err) {
   );
 }
 
+function withReasoningOptions(model, options) {
+  if (String(model).includes('gpt-oss')) {
+    return {
+      ...options,
+      reasoning_effort: 'low',
+      include_reasoning: false,
+    };
+  }
+  return options;
+}
+
 // 1. Normal Answer with fallback
 export async function generateAnswer(prompt) {
   let lastError = null;
   for (const model of CANDIDATE_MODELS) {
     try {
-      const completion = await groq.chat.completions.create({
+      const completion = await groq.chat.completions.create(withReasoningOptions(model, {
         model,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.3,
-      });
+      }));
       return completion.choices[0]?.message?.content || '';
     } catch (error) {
       console.error(`Groq Model (${model}) Error:`, error.message);
@@ -55,12 +66,12 @@ export async function generateAnswerStream(prompt) {
   let lastError = null;
   for (const model of CANDIDATE_MODELS) {
     try {
-      const response = await groq.chat.completions.create({
+      const response = await groq.chat.completions.create(withReasoningOptions(model, {
         model,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.3,
         stream: true,
-      });
+      }));
 
       async function* streamGenerator() {
         for await (const chunk of response) {
@@ -74,6 +85,53 @@ export async function generateAnswerStream(prompt) {
       return { stream: streamGenerator() };
     } catch (error) {
       console.error(`Groq Stream Model (${model}) Error:`, error.message);
+      lastError = error;
+      if (!isModelAvailabilityError(error)) {
+        break;
+      }
+    }
+  }
+  throw lastError;
+}
+
+// 3. Raw Chat Completion with Tools and Fallback (Required for Agentic RAG)
+export async function getGroqChatCompletion({ messages, tools, tool_choice }) {
+  let lastError = null;
+  for (const model of CANDIDATE_MODELS) {
+    try {
+      const completion = await groq.chat.completions.create(withReasoningOptions(model, {
+        model,
+        messages,
+        tools,
+        tool_choice: tool_choice || 'auto',
+        temperature: 0.1,
+      }));
+      return completion;
+    } catch (error) {
+      console.error(`Groq Tool Model (${model}) Error:`, error.message);
+      lastError = error;
+      if (!isModelAvailabilityError(error)) {
+        break;
+      }
+    }
+  }
+  throw lastError;
+}
+
+// 4. Raw Chat Completion Stream with Fallback (For Agentic RAG Final Answer Streaming)
+export async function getGroqChatCompletionStream({ messages }) {
+  let lastError = null;
+  for (const model of CANDIDATE_MODELS) {
+    try {
+      const stream = await groq.chat.completions.create(withReasoningOptions(model, {
+        model,
+        messages,
+        temperature: 0.1,
+        stream: true,
+      }));
+      return stream;
+    } catch (error) {
+      console.error(`Groq Chat Stream Model (${model}) Error:`, error.message);
       lastError = error;
       if (!isModelAvailabilityError(error)) {
         break;

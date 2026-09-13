@@ -25,8 +25,11 @@ export const AuthProvider = ({ children }) => {
           localStorage.removeItem("token");
         }
       } catch (error) {
-        console.error("Failed to restore session:", error);
-        localStorage.removeItem("token");
+        const status = error.response?.status;
+        if (status === 401 || status === 403) {
+          localStorage.removeItem("token");
+          setUser(null);
+        }
       } finally {
         setLoading(false);
       }
