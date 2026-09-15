@@ -131,7 +131,6 @@ export default function Layout({ children, chatSidebarProps, hideSidebar = false
               ))}
             </nav>
           </div>
-
           {/* Chat History / Sessions list in Sidebar */}
           {chatSidebarProps && (
             <div className="flex-1 border-t border-[#e3e8ef] pt-4 flex flex-col min-h-0">
@@ -157,7 +156,6 @@ export default function Layout({ children, chatSidebarProps, hideSidebar = false
                   </button>
                 )}
               </div>
-
               {/* Scrollable list */}
               {!isCollapsed && (
                 <div className="flex-1 overflow-y-auto space-y-0.5 pr-1 pb-4 px-2 custom-scrollbar">
@@ -196,9 +194,7 @@ export default function Layout({ children, chatSidebarProps, hideSidebar = false
               )}
             </div>
           )}
-
           {!chatSidebarProps && <div className="flex-1" />}
-
           {/* Footer Area */}
           <div className="p-3 border-t border-[#e3e8ef] bg-[#f0f4f9] mt-auto">
             <div className={`flex items-center gap-2.5 px-1.5 py-1 ${isCollapsed ? "justify-center" : ""}`}>
@@ -225,7 +221,6 @@ export default function Layout({ children, chatSidebarProps, hideSidebar = false
           </div>
         </aside>
       )}
-
       {/* Main Content Pane */}
       <main className="flex-1 flex flex-col h-screen overflow-hidden bg-white">
         {children}

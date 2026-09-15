@@ -91,9 +91,7 @@ export default function RagAssistant() {
                 headers,
                 body: JSON.stringify({ query: userQuery }),
             });
-
             const data = await res.json();
-
             if (res.ok) {
                 setMessages((prev) => [
                     ...prev,
