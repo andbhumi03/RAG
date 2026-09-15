@@ -11,6 +11,29 @@ const CANDIDATE_MODELS = [
   'qwen/qwen3.8-27b',
 ].filter(Boolean);
 
+const RETRY_ATTEMPTS = 3;
+const RETRY_BASE_DELAY_MS = 250;
+
+function isTransientError(error) {
+  const message = String(error?.message || '').toLowerCase();
+  const status = error?.status || error?.statusCode;
+  return [408, 429, 500, 502, 503, 504].includes(status) ||
+    ['econnreset', 'econnrefused', 'etimedout', 'enotfound', 'fetch failed', 'network'].some((value) => message.includes(value));
+}
+
+async function withRetry(operation, label) {
+  for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!isTransientError(error) || attempt === RETRY_ATTEMPTS - 1) throw error;
+      const delay = RETRY_BASE_DELAY_MS * (2 ** attempt);
+      console.warn(`${label} retry ${attempt + 1} after ${delay}ms`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
 function isModelAvailabilityError(err) {
   const msg = String(err?.message || '').toLowerCase();
   const code = String(err?.code || '').toLowerCase();
@@ -38,17 +61,16 @@ function withReasoningOptions(model, options) {
   }
   return options;
 }
-
 // 1. Normal Answer with fallback
 export async function generateAnswer(prompt) {
   let lastError = null;
   for (const model of CANDIDATE_MODELS) {
     try {
-      const completion = await groq.chat.completions.create(withReasoningOptions(model, {
+      const completion = await withRetry(() => groq.chat.completions.create(withReasoningOptions(model, {
         model,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.3,
-      }));
+      })), `Groq Model (${model})`);
       return completion.choices[0]?.message?.content || '';
     } catch (error) {
       console.error(`Groq Model (${model}) Error:`, error.message);
@@ -60,19 +82,17 @@ export async function generateAnswer(prompt) {
   }
   throw lastError;
 }
-
 // 2. Streaming Answer with fallback
 export async function generateAnswerStream(prompt) {
   let lastError = null;
   for (const model of CANDIDATE_MODELS) {
     try {
-      const response = await groq.chat.completions.create(withReasoningOptions(model, {
+      const response = await withRetry(() => groq.chat.completions.create(withReasoningOptions(model, {
         model,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.3,
         stream: true,
-      }));
-
+      })), `Groq Stream Model (${model})`);
       async function* streamGenerator() {
         for await (const chunk of response) {
           const text = chunk.choices[0]?.delta?.content || '';
@@ -81,7 +101,6 @@ export async function generateAnswerStream(prompt) {
           }
         }
       }
-
       return { stream: streamGenerator() };
     } catch (error) {
       console.error(`Groq Stream Model (${model}) Error:`, error.message);
@@ -93,19 +112,18 @@ export async function generateAnswerStream(prompt) {
   }
   throw lastError;
 }
-
 // 3. Raw Chat Completion with Tools and Fallback (Required for Agentic RAG)
 export async function getGroqChatCompletion({ messages, tools, tool_choice }) {
   let lastError = null;
   for (const model of CANDIDATE_MODELS) {
     try {
-      const completion = await groq.chat.completions.create(withReasoningOptions(model, {
+      const completion = await withRetry(() => groq.chat.completions.create(withReasoningOptions(model, {
         model,
         messages,
         tools,
         tool_choice: tool_choice || 'auto',
         temperature: 0.1,
-      }));
+      })), `Groq Tool Model (${model})`);
       return completion;
     } catch (error) {
       console.error(`Groq Tool Model (${model}) Error:`, error.message);
@@ -123,12 +141,12 @@ export async function getGroqChatCompletionStream({ messages }) {
   let lastError = null;
   for (const model of CANDIDATE_MODELS) {
     try {
-      const stream = await groq.chat.completions.create(withReasoningOptions(model, {
+      const stream = await withRetry(() => groq.chat.completions.create(withReasoningOptions(model, {
         model,
         messages,
         temperature: 0.1,
         stream: true,
-      }));
+      })), `Groq Chat Stream Model (${model})`);
       return stream;
     } catch (error) {
       console.error(`Groq Chat Stream Model (${model}) Error:`, error.message);

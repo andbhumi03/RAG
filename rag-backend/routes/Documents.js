@@ -48,7 +48,6 @@ const parsePdfBuffer = (buffer) => {
 
           page.Texts.forEach((textItem) => {
             const y = Math.round(textItem.y * 10) / 10;
-
             // PDF text can contain malformed percent escapes.
             let rawText = textItem.R?.[0]?.T || '';
             try {
@@ -58,11 +57,9 @@ const parsePdfBuffer = (buffer) => {
                 String.fromCharCode(parseInt(hex, 16))
               );
             }
-
             if (!lines[y]) lines[y] = [];
             lines[y].push({ x: textItem.x, text: rawText });
           });
-
           Object.keys(lines)
             .sort((a, b) => parseFloat(a) - parseFloat(b))
             .forEach((y) => {
@@ -72,23 +69,19 @@ const parsePdfBuffer = (buffer) => {
                 .join(" | ");
               pageText += rowText + "\n";
             });
-
           if (pageText.trim()) {
             fullText += `--- Page ${pageIndex + 1} ---\n` + pageText;
           }
         });
-
         if (!fullText.trim()) {
           return fail(new Error("PDF contains no extractable text"));
         }
-
         settled = true;
         resolve(fullText);
       } catch (parseEx) {
         fail(parseEx);
       }
     });
-
     try {
       pdfParser.parseBuffer(buffer);
     } catch (parseEx) {
@@ -96,7 +89,6 @@ const parsePdfBuffer = (buffer) => {
     }
   });
 };
-
 // 1. Fetch All Documents
 router.get('/', authMiddleware, async (req, res) => {
   try {
@@ -112,19 +104,16 @@ router.get('/', authMiddleware, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch documents' });
   }
 });
-
 // 2. Upload & Process Document (POST /api/documents/upload)
 router.post('/upload', authMiddleware, upload.single('file'), async (req, res) => {
   try {
     if (!req.file || !req.file.buffer || req.file.buffer.length === 0) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
-
     let extractedText = '';
     const fileName = req.file.originalname;
     const fileExt = fileName.split('.').pop().toLowerCase();
     const mimeType = req.file.mimetype || '';
-
     try {
       if (fileExt === 'pdf' || mimeType === 'application/pdf') {
         extractedText = await parsePdfBuffer(req.file.buffer);
@@ -144,28 +133,22 @@ router.post('/upload', authMiddleware, upload.single('file'), async (req, res) =
       console.error('File Parsing/OCR Error:', parseErr.message);
       return res.status(400).json({ error: 'Failed to extract text from file: ' + parseErr.message });
     }
-
     extractedText = sanitizePdfText(extractedText);
-
     if (!extractedText || !extractedText.trim()) {
       return res.status(400).json({
         error: 'Failed to upload document. Ensure file is not scanned and is readable.'
       });
     }
-
     // Text Chunking
     const chunks = chunkText ? chunkText(extractedText) : [extractedText];
     if (!chunks || chunks.length === 0) {
       return res.status(400).json({ error: 'Failed to split document into chunks.' });
     }
-
     // Batch Processing Embeddings
     const BATCH_SIZE = 4;
     const chunkDocs = [];
-
     for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
       const batch = chunks.slice(i, i + BATCH_SIZE);
-
       const batchResults = await Promise.all(
         batch.map(async (chunkItem) => {
           if (!chunkItem || !chunkItem.trim()) return null;
@@ -174,7 +157,6 @@ router.post('/upload', authMiddleware, upload.single('file'), async (req, res) =
             if (!Array.isArray(embedding) || embedding.length === 0) {
               throw new Error('Embedding service returned an empty vector');
             }
-
             return {
               userId: req.userId,
               chunkText: chunkItem,
@@ -185,14 +167,11 @@ router.post('/upload', authMiddleware, upload.single('file'), async (req, res) =
           }
         })
       );
-
       chunkDocs.push(...batchResults);
     }
-
     if (chunkDocs.length === 0) {
       return res.status(502).json({ error: 'Failed to generate embeddings for the extracted PDF text.' });
     }
-
     // Save the document only after extraction and embeddings have succeeded.
     const document = await Document.create({
       userId: req.userId,
@@ -201,12 +180,10 @@ router.post('/upload', authMiddleware, upload.single('file'), async (req, res) =
       status: 'processed',
       createdAt: new Date(),
     });
-
     await Chunk.insertMany(chunkDocs.map((chunk) => ({
       ...chunk,
       documentId: document._id,
     })));
-
     return res.status(201).json({
       documentId: document._id,
       fileName: document.fileName,
@@ -214,55 +191,45 @@ router.post('/upload', authMiddleware, upload.single('file'), async (req, res) =
       chunkCount: chunkDocs.length,
       uploadDate: document.createdAt,
     });
-
   } catch (error) {
     console.error('CRITICAL UPLOAD ERROR:', error);
     return res.status(500).json({ error: error.message || 'Failed to process document' });
   }
 });
-
 // 3. Delete Document
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const documentId = req.params.id;
     const userId = req.userId || req.user?.id;
-
     const deletedDoc = await Document.findOneAndDelete({
       _id: documentId,
       userId: userId
     });
-
     if (!deletedDoc) {
       return res.status(404).json({
         error: 'Document not found or access denied (Unauthorized)'
       });
     }
-
     await Chunk.deleteMany({ documentId: documentId, userId: userId });
-
     return res.json({
       documentId,
       deleted: true,
       message: 'Document and vector embeddings deleted successfully.'
     });
-
   } catch (error) {
     console.error('Delete document error:', error);
     return res.status(500).json({ error: 'Failed to delete document' });
   }
 });
-
 // 4. Fetch Document Chunks (GET /api/documents/:id/chunks)
 router.get('/:id/chunks', authMiddleware, async (req, res) => {
   try {
     const documentId = req.params.id;
     const userId = req.userId;
-
     const doc = await Document.findOne({ _id: documentId, userId });
     if (!doc) {
       return res.status(404).json({ error: 'Document not found or unauthorized' });
     }
-
     const chunks = await Chunk.find({ documentId, userId });
     return res.json({ chunks });
   } catch (error) {
@@ -270,5 +237,4 @@ router.get('/:id/chunks', authMiddleware, async (req, res) => {
     return res.status(500).json({ error: 'Failed to fetch document chunks' });
   }
 });
-
 export default router;

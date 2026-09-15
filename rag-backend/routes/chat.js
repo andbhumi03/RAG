@@ -2,41 +2,32 @@ import express from 'express';
 import mongoose from 'mongoose';
 import Chat from "../models/Chat.js";
 import Chunk from '../models/Chunk.js';
-import Message from "../models/Message.js";
+import Message from "../models/Messages.js";
 import authMiddleware from '../middleware/auth.js';
 import { generateAnswer } from '../services/groq.js';
 import { runAgent } from '../services/agent/agentRunner.js';
-
 const router = express.Router();
-
 const MIN_RELEVANCE_SCORE = Number(process.env.RAG_MIN_RELEVANCE_SCORE || 0.20);
-
 const redactSensitiveText = (value) => String(value ?? '')
   .replace(/(api[_ -]?key|secret|password|token|authorization)\s*[:=]\s*\S+/gi, '$1: [redacted]')
   .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [redacted]')
   .replace(/\b(?:\d[ -]*?){13,19}\b/g, '[redacted payment number]')
   .replace(/\b\d{3}-\d{2}-\d{4}\b/g, '[redacted personal number]');
-
 const makeTitleFallback = (question) => {
   const words = redactSensitiveText(question).replace(/[^\w\s'-]/g, '').trim().split(/\s+/).slice(0, 7);
   return words.length ? words.join(' ') : 'Document question';
 };
-
 const FALLBACK_EMPTY_ANSWER = "I was unable to find or generate a suitable response based on the uploaded documents. Please try rephrasing your question or checking your document context.";
-
 function formatUserFriendlyErrorMessage(err) {
   if (!err) return "Unable to generate a response at this time. Please try again.";
-
   let message = "";
   let status = err.status || err.statusCode || null;
   let code = err.code || err.type || "";
-
   if (typeof err === "string") {
     message = err;
   } else if (err.message) {
     message = err.message;
   }
-
   // If message contains serialized JSON (e.g., Groq SDK error response or raw error JSON)
   if (typeof message === "string" && (message.trim().startsWith("{") || message.includes('"error"'))) {
     try {
@@ -64,10 +55,8 @@ function formatUserFriendlyErrorMessage(err) {
       if (err.error.type) code = code || err.error.type;
     }
   }
-
   const lowerMsg = String(message).toLowerCase();
   const lowerCode = String(code).toLowerCase();
-
   // 1. Rate limits / TPM / RPM / Quota
   const isRateLimit =
     status === 429 ||
@@ -84,11 +73,9 @@ function formatUserFriendlyErrorMessage(err) {
     lowerMsg.includes("too large for model") ||
     lowerMsg.includes("reduce your message size") ||
     lowerMsg.includes("billing");
-
   if (isRateLimit) {
     return "The AI service is currently experiencing high demand. Please wait a few moments and try again.";
   }
-
   // 2. Model Unavailable / Decommissioned / Overloaded / Network
   const isModelUnavailable =
     status === 404 ||
@@ -111,7 +98,6 @@ function formatUserFriendlyErrorMessage(err) {
   if (isModelUnavailable) {
     return "The AI assistant is temporarily unavailable. Please try again in a few moments.";
   }
-
   // 3. Safety / Guardrails / Moderation
   const isSafetyGuardrail =
     lowerCode.includes("content_filter") ||
@@ -127,35 +113,35 @@ function formatUserFriendlyErrorMessage(err) {
   if (isSafetyGuardrail) {
     return "I cannot generate a response for this request due to content safety guidelines. Please ask another question about your documents.";
   }
-
+  const isToolChoiceError =
+    lowerCode.includes("tool_use_failed") ||
+    lowerMsg.includes("tool choice") ||
+    lowerMsg.includes("model called a tool");
+  if (isToolChoiceError) {
+    return "The assistant could not complete this document search. Please try the question again.";
+  }
   // 4. Database / Mongo validation / connection errors
   const isDatabaseError =
     lowerMsg.includes("validation failed") ||
     lowerMsg.includes("path 'content'") ||
     lowerMsg.includes("mongo") ||
     lowerMsg.includes("casterror");
-
   if (isDatabaseError) {
     return "A temporary system error occurred while processing your request. Please try again.";
   }
-
   // Fallback: Never display raw SDK names, HTTP codes, or JSON dumps
   return "Unable to generate a response from the AI assistant. Please try again.";
 }
-
 function extractGroundedSources(answerText, topChunks) {
   if (!answerText || !topChunks.length) return [];
-
-  // 1. Top score ke basis par relative threshold calculate karein (Noise files filter karne ke liye)
+  // 1. Relative threshold calculation based on top score
   const topScore = Math.max(...topChunks.map((item) => item.score || 0));
   const validChunks = topChunks.filter(
     (item) => item.score >= topScore * 0.7 && item.score >= 0.18
   );
-
   const citationRegex = /\[Source:\s*([^\]]+)\]/gi;
   const citedFileNames = new Set();
   let match;
-
   while ((match = citationRegex.exec(answerText)) !== null) {
     citedFileNames.add(match[1].trim().toLowerCase());
   }
@@ -174,7 +160,6 @@ function extractGroundedSources(answerText, topChunks) {
       }
     }
   });
-
   // 2. Fallback: Agar citation tag omit ho gaya, toh SIRF sabse relevant top 1 document bhejo
   if (
     groundedSourcesMap.size === 0 &&
@@ -191,7 +176,6 @@ function extractGroundedSources(answerText, topChunks) {
 
   return Array.from(groundedSourcesMap.values());
 }
-
 // Helper: Tokenize and normalize text for Keyword Search
 function tokenize(text) {
   return String(text || '')
@@ -200,7 +184,6 @@ function tokenize(text) {
     .split(/\s+/)
     .filter((word) => word.length > 1);
 }
-
 // Helper: Calculate Keyword Overlap Score (0 to 1)
 function calculateKeywordScore(queryTokens, chunkText) {
   const chunkTokens = tokenize(chunkText);
@@ -214,7 +197,6 @@ function calculateKeywordScore(queryTokens, chunkText) {
       matches++;
     }
   }
-
   return matches / queryTokens.length;
 }
 // Get all user chat sessions for sidebar
@@ -226,7 +208,6 @@ router.get("/sessions", authMiddleware, async (req, res) => {
     res.status(500).json({ error: "Failed to fetch chat sessions" });
   }
 });
-
 // Get messages for a specific chat
 router.get("/:chatId/messages", authMiddleware, async (req, res) => {
   try {
@@ -236,7 +217,6 @@ router.get("/:chatId/messages", authMiddleware, async (req, res) => {
     res.status(500).json({ error: "Failed to fetch messages" });
   }
 });
-
 // Create new chat session
 router.post("/new", authMiddleware, async (req, res) => {
   try {
@@ -246,7 +226,6 @@ router.post("/new", authMiddleware, async (req, res) => {
     res.status(500).json({ error: "Failed to create chat" });
   }
 });
-
 // Delete a chat session
 router.delete("/:chatId", authMiddleware, async (req, res) => {
   try {
@@ -257,7 +236,6 @@ router.delete("/:chatId", authMiddleware, async (req, res) => {
     res.status(500).json({ error: "Failed to delete chat" });
   }
 });
-
 // Main /query route with persistent database storage
 router.post("/query", authMiddleware, async (req, res) => {
   try {
@@ -268,9 +246,7 @@ router.post("/query", authMiddleware, async (req, res) => {
     if (!question) {
       return res.status(400).json({ error: 'Question is required' });
     }
-
     question = redactSensitiveText(question);
-
     // 1. Agar Chat ID nahi hai toh Naya Chat Create karein
     if (!chatId) {
       const initialTitle = makeTitleFallback(question);
@@ -281,8 +257,7 @@ router.post("/query", authMiddleware, async (req, res) => {
       chatId = chat._id;
       chatTitle = initialTitle;
     }
-
-    // 2. User Message DB me Save karein
+    // 2.save user msg in database
     await Message.create({ chatId, role: "user", content: question });
 
     if (!chatTitle) {
@@ -348,6 +323,7 @@ router.post("/query", authMiddleware, async (req, res) => {
 router.post('/query-stream', authMiddleware, async (req, res) => {
   let closed = false;
   let completed = false;
+  let chatId = null;
 
   req.on('aborted', () => {
     if (!completed) {
@@ -361,21 +337,19 @@ router.post('/query-stream', authMiddleware, async (req, res) => {
   });
 
   try {
-    let { question,query, chatId } = req.body;
+    let { question, query, chatId: requestedChatId } = req.body;
     question = question || query;
+    chatId = requestedChatId || null;
     if (!question) {
       return res.status(400).json({ error: 'Question is required' });
     }
-
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
     res.write(': stream-ready\n\n');
-
     question = redactSensitiveText(question);
     let chatTitle = null;
-
     if (!chatId) {
       chatTitle = makeTitleFallback(question);
       const chat = await Chat.create({ userId: req.userId, title: chatTitle });
@@ -384,21 +358,16 @@ router.post('/query-stream', authMiddleware, async (req, res) => {
       const existingChat = await Chat.findOne({ _id: chatId, userId: req.userId }).select('title');
       chatTitle = existingChat?.title || 'Document question';
     }
-
-    // 1. User Message DB me save karein
+    // 1. msg is saved in DB for user question
     await Message.create({ chatId, role: 'user', content: question });
-
     if (closed) return res.end();
-
-    // 2. Chat history fetch karein taaki Agent ke paas context rahe (latest 10 messages)
+    // 2.latest 10 msg history for agent context
     const pastMessages = (await Message.find({ chatId }).sort({ createdAt: -1 }).limit(10).lean()).reverse();
     const formattedMessages = pastMessages.map(m => ({
       role: m.role,
       content: m.content
     }));
-
     if (closed) return res.end();
-
     // 3. Run Autonomous Agent Loop with live token streaming callback
     let hasStreamedTokens = false;
     const agentResult = await runAgent(
@@ -417,22 +386,17 @@ router.post('/query-stream', authMiddleware, async (req, res) => {
         }
       }
     );
-
     if (closed) return res.end();
-
     const rawAnswer = redactSensitiveText(agentResult.finalAnswer);
     let cleanAnswer = rawAnswer.replace(/\[Source:\s*[^\]]+\]/gi, '').trim();
-
     if (!cleanAnswer) {
       cleanAnswer = FALLBACK_EMPTY_ANSWER;
     }
-
-    // Agar model ne non-streaming answer diya ho toh pura answer bhej dein
+    // non streaming ans
     if (!hasStreamedTokens) {
       res.write(`data: ${JSON.stringify({ text: cleanAnswer })}\n\n`);
     }
-
-    // 4. Assistant Message DB me save karein
+    // 4. msg will be saved in DB with grounded sources
     const groundedSources = agentResult.sources || [];
     await Message.create({
       chatId,
@@ -440,8 +404,7 @@ router.post('/query-stream', authMiddleware, async (req, res) => {
       content: cleanAnswer,
       sources: groundedSources
     });
-
-    // 5. Background me Chat Title Update Karein
+    // 5.chat Title
     if (chatTitle === 'New Chat' || chatTitle === makeTitleFallback(question)) {
       try {
         const titlePrompt = `Create a concise 3 to 5 word title for this document question. Return only the title, with no punctuation or quotes. Question: ${question}`;
@@ -454,28 +417,30 @@ router.post('/query-stream', authMiddleware, async (req, res) => {
         console.error('Failed to generate chat title:', titleErr.message);
       }
     }
-
-    // 6. Grounded sources aur chat metadata frontend ko bhej dein
+    // 6. Grounded sources and chat meta datasent to frotend
     res.write(`data: ${JSON.stringify({ chatId, chatTitle, sources: groundedSources, steps: agentResult.steps })}\n\n`);
     res.write('data: [DONE]\n\n');
     completed = true;
     res.end();
 
   } catch (error) {
-    console.error('🔥 Streaming query error:', error);
-    console.error('🔥 Error Message:', error.message);
-
+    console.error('Streaming query error:', error);
+    console.error(' Error Message:', error.message);
     const errorMessage = formatUserFriendlyErrorMessage(error);
-
+    if (chatId) {
+      try {
+        await Message.create({ chatId, role: 'assistant', content: errorMessage, sources: [] });
+      } catch (saveError) {
+        console.error('Failed to save streaming error message:', saveError.message);
+      }
+    }
     if (!res.headersSent) {
       return res.status(500).json({ error: errorMessage });
     }
-
     if (!closed && !res.writableEnded) {
       res.write(`data: ${JSON.stringify({ error: errorMessage })}\n\n`);
       res.write('data: [DONE]\n\n');
     }
-
     if (!res.writableEnded) {
       res.end();
     }

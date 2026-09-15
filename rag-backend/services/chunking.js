@@ -9,6 +9,11 @@ export function chunkText(text, chunkSize = 600, overlap = 120) {
     return separators[index];
   }
 
+
+
+
+
+
   function split(text, index) {
     if (text.length <= chunkSize) return [text];
     const separator = getSeparator(text, index);
