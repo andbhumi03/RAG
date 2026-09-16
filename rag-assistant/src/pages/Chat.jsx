@@ -7,18 +7,14 @@ import api from "../api/axiosInstance";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import Layout from "../components/Layout";
-
 // Consolidated Loader Spinner component
 const LoadingSpinner = () => (
   <div className="animate-spin rounded-full h-5 w-5 border-2 border-[#a8c7fa] border-t-[#1a73e8] shrink-0" />
 );
-
 // Clean user error message: strips technical SDK leaks, status codes, and internal JSON
 const cleanUserErrorMessage = (rawError) => {
   if (!rawError) return "Unable to complete request. Please try again.";
-
   let errText = typeof rawError === "string" ? rawError : (rawError.message || String(rawError));
-
   // If errText contains serialized JSON
   if (errText.trim().startsWith("{") || errText.includes('"error"')) {
     try {
@@ -33,9 +29,7 @@ const cleanUserErrorMessage = (rawError) => {
       // not JSON
     }
   }
-
   const lower = errText.toLowerCase();
-
   // Rate limit / Quota / TPM
   if (
     lower.includes("429") ||
@@ -51,7 +45,6 @@ const cleanUserErrorMessage = (rawError) => {
   ) {
     return "The AI service is currently experiencing high demand. Please wait a few moments and try again.";
   }
-
   // Model unavailable / 404 / 503 / decommissioned
   if (
     lower.includes("404") ||
@@ -69,7 +62,6 @@ const cleanUserErrorMessage = (rawError) => {
   ) {
     return "The AI assistant is temporarily unavailable. Please try again in a few moments.";
   }
-
   // Guardrails / safety
   if (
     lower.includes("guardrail") ||
@@ -81,7 +73,6 @@ const cleanUserErrorMessage = (rawError) => {
   ) {
     return "I cannot generate a response for this request due to content safety guidelines. Please ask another question about your documents.";
   }
-
   // Database / Mongoose
   if (
     lower.includes("validation failed") ||
@@ -92,7 +83,6 @@ const cleanUserErrorMessage = (rawError) => {
   ) {
     return "A temporary system error occurred while processing your request. Please try again.";
   }
-
   // Network / HTTP status
   if (
     lower.includes("failed to fetch") ||
@@ -102,10 +92,8 @@ const cleanUserErrorMessage = (rawError) => {
   ) {
     return "A network error occurred while contacting the server. Please check your connection and try again.";
   }
-
   return errText;
 };
-
 export default function Chat() {
   const [activeTab, setActiveTab] = useState("chat");
   const [input, setInput] = useState("");
@@ -114,33 +102,27 @@ export default function Chat() {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
   const [creatingChat, setCreatingChat] = useState(false);
-
   // Documents management state
   const [documents, setDocuments] = useState([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
-
   // Modals, Drawers & Toast Notifications
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState(null);
   const [toast, setToast] = useState({ show: false, message: "", type: "success" });
-
   const { user } = useAuth();
   const navigate = useNavigate();
-
   const messagesEndRef = useRef(null);
   const chatContainerRef = useRef(null);
   const isSwitchingChatRef = useRef(true);
   const abortControllerRef = useRef(null);
   const inputRef = useRef(null);
-
   useEffect(() => {
     loadSessions();
     loadDocuments();
   }, []);
-
   useEffect(() => {
     const handleOutsideClick = (e) => {
       if (exportOpen && !e.target.closest(".export-dropdown-container")) {
@@ -150,7 +132,6 @@ export default function Chat() {
     window.addEventListener("click", handleOutsideClick);
     return () => window.removeEventListener("click", handleOutsideClick);
   }, [exportOpen]);
-
   // Instant direct positioning to the recent message on load/switch before browser paint
   useLayoutEffect(() => {
     if (chatContainerRef.current) {
@@ -165,17 +146,14 @@ export default function Chat() {
         chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
       }
     };
-
     scrollToLatest();
     const frameId = requestAnimationFrame(scrollToLatest);
     const timerId = setTimeout(scrollToLatest, 50);
-
     return () => {
       cancelAnimationFrame(frameId);
       clearTimeout(timerId);
     };
   }, [messages, activeChatId, loading]);
-
   // Toast trigger helper
   const showToast = (message, type = "success") => {
     setToast({ show: true, message, type });
@@ -183,7 +161,6 @@ export default function Chat() {
       setToast({ show: false, message: "", type: "success" });
     }, 1500);
   };
-
   const loadSessions = async () => {
     try {
       const data = await getChatHistory();
@@ -195,7 +172,6 @@ export default function Chat() {
       console.error("Failed to fetch sessions", err);
     }
   };
-
   const loadDocuments = async () => {
     try {
       setLoadingDocs(true);
@@ -207,7 +183,6 @@ export default function Chat() {
       setLoadingDocs(false);
     }
   };
-
   const selectChat = async (chatId) => {
     setActiveChatId(chatId);
     isSwitchingChatRef.current = true;
@@ -218,7 +193,6 @@ export default function Chat() {
       console.error("Failed to load messages", err);
     }
   };
-
   const handleNewChat = async () => {
     if (creatingChat) return;
     setCreatingChat(true);
@@ -235,15 +209,14 @@ export default function Chat() {
       setCreatingChat(false);
     }
   };
-
   const handleDeleteChat = async (e, chatId) => {
     e.stopPropagation();
-    setDeleteTarget(chatId); // Yeh modal ko trigger karega
+    setDeleteTarget(chatId);
   };
 
   const confirmDeleteChat = async () => {
     const chatId = deleteTarget;
-    setDeleteTarget(null); // Modal close kar do
+    setDeleteTarget(null);
     if (!chatId) return;
 
     try {
@@ -263,7 +236,6 @@ export default function Chat() {
       showToast("Failed to delete chat", "error");
     }
   };
-
   const handleCopy = (text, index) => {
     if (!text) return;
     navigator.clipboard.writeText(text);
@@ -273,12 +245,10 @@ export default function Chat() {
       setCopiedIndex((prev) => (prev === index ? null : prev));
     }, 2000);
   };
-
   const executeStreamingQuery = async (userText, targetIndex = null) => {
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
     setLoading(true);
-
     try {
       const response = await fetch(`${api.defaults.baseURL}/chat/query-stream`, {
         method: "POST",
@@ -289,7 +259,6 @@ export default function Chat() {
         body: JSON.stringify({ question: userText, chatId: activeChatId }),
         signal: abortController.signal,
       });
-
       if (!response.ok) {
         let serverMessage = `Streaming request failed with status ${response.status}`;
         try {
@@ -443,7 +412,6 @@ export default function Chat() {
 
   const handleRetry = async (aiMsgIndex) => {
     if (loading) return;
-
     // Find the user question that prompted this AI response
     let promptQuestion = "";
     for (let j = aiMsgIndex - 1; j >= 0; j--) {
@@ -454,12 +422,10 @@ export default function Chat() {
         break;
       }
     }
-
     if (!promptQuestion) {
       showToast("No question found to retry", "error");
       return;
     }
-
     setMessages((prev) => {
       const updated = [...prev];
       updated[aiMsgIndex] = {
@@ -472,14 +438,11 @@ export default function Chat() {
       };
       return updated;
     });
-
     await executeStreamingQuery(promptQuestion, aiMsgIndex);
   };
-
   const stopGenerating = () => {
     abortControllerRef.current?.abort();
   };
-
   const exportChat = (format) => {
     if (!messages.length) return;
     let content = "";
@@ -511,7 +474,6 @@ export default function Chat() {
     URL.revokeObjectURL(url);
     showToast(`Chat exported as ${format.toUpperCase()}`);
   };
-
   const handleDrag = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -521,7 +483,6 @@ export default function Chat() {
       setDragActive(false);
     }
   };
-
   const handleDrop = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -530,13 +491,11 @@ export default function Chat() {
       handleFile(e.dataTransfer.files[0]);
     }
   };
-
   const handleFileInput = (e) => {
     if (e.target.files && e.target.files[0]) {
       handleFile(e.target.files[0]);
     }
   };
-
   const handleFile = async (file) => {
     if (!file) return;
 
@@ -544,21 +503,17 @@ export default function Chat() {
       alert("File size exceeds 10MB limit.");
       return;
     }
-
     const ext = file.name.split('.').pop().toLowerCase();
     if (!['pdf', 'docx', 'txt'].includes(ext)) {
       alert("Unsupported file format. Please upload PDF, DOCX, or TXT.");
       return;
     }
-
     setUploading(true);
-
     try {
       const formData = new FormData();
       formData.append("file", file);
       // Let the browser set the multipart boundary automatically.
       const res = await api.post("/documents/upload", formData);
-
       if (res.data) {
         const newDoc = {
           _id: res.data.documentId,
@@ -747,9 +702,8 @@ export default function Chat() {
                   }
                   setExportOpen((open) => !open);
                 }}
-                className={`inline-flex items-center gap-1.5 rounded-xl border border-[#e3e8ef] bg-[#f0f4f9] px-3.5 py-1.5 text-xs font-bold text-[#1f1f1f] hover:bg-[#e3e8ef] transition shadow-xs cursor-pointer ${
-                  messages.length === 0 ? "opacity-60" : ""
-                }`}
+                className={`inline-flex items-center gap-1.5 rounded-xl border border-[#e3e8ef] bg-[#f0f4f9] px-3.5 py-1.5 text-xs font-bold text-[#1f1f1f] hover:bg-[#e3e8ef] transition shadow-xs cursor-pointer ${messages.length === 0 ? "opacity-60" : ""
+                  }`}
                 title="Export chat history"
               >
                 <svg className="w-3.5 h-3.5 text-[#5f6368]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -816,14 +770,14 @@ export default function Chat() {
                       onClick={() => handleSuggestionClick("Summarize the main points of my uploaded documents.")}
                       className="p-5 text-left bg-[#f0f4f9] border border-[#e3e8ef] rounded-3xl hover:bg-[#e3e8ef] transition-all duration-200 cursor-pointer group"
                     >
-                      <p className="font-bold text-xs text-[#1f1f1f] group-hover:text-[#1a73e8] transition-colors">📄 Summarize Documents</p>
+                      <p className="font-bold text-xs text-[#1f1f1f] group-hover:text-[#1a73e8] transition-colors">Summarize Documents</p>
                       <p className="text-[11px] text-[#5f6368] mt-1.5 leading-relaxed">Get an overview of key points from all your uploaded files.</p>
                     </button>
                     <button
                       onClick={() => handleSuggestionClick("What are the key policies and guidelines outlined in the text?")}
                       className="p-5 text-left bg-[#f0f4f9] border border-[#e3e8ef] rounded-3xl hover:bg-[#e3e8ef] transition-all duration-200 cursor-pointer group"
                     >
-                      <p className="font-bold text-xs text-[#1f1f1f] group-hover:text-[#1a73e8] transition-colors">⚖️ Extract Guidelines</p>
+                      <p className="font-bold text-xs text-[#1f1f1f] group-hover:text-[#1a73e8] transition-colors">Extract Guidelines</p>
                       <p className="text-[11px] text-[#5f6368] mt-1.5 leading-relaxed">List operational constraints described in the documents.</p>
                     </button>
                   </div>
