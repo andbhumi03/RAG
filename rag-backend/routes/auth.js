@@ -53,7 +53,7 @@ router.post('/signup', async (req, res) => {
       user: { id: user._id, name: user.name, email: user.email } 
     });
   } catch (error) {
-    console.error('DETAILED SIGNUP ERROR:', error); // 👈 Check backend terminal for full error
+    console.error('DETAILED SIGNUP ERROR:', error); // Check backend terminal for full error
     res.status(500).json({ error: 'Signup failed', details: error.message });
   }
 });
@@ -85,7 +85,7 @@ router.post('/login', async (req, res) => {
       user: { id: user._id, name: user.name, email: user.email } 
     });
   } catch (error) {
-    console.error('DETAILED LOGIN ERROR:', error); // 👈 Check backend terminal for full error
+    console.error('DETAILED LOGIN ERROR:', error); // Check backend terminal for full error
     res.status(500).json({ error: 'Login failed', details: error.message });
   }
 });

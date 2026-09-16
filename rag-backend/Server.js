@@ -48,7 +48,7 @@ const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGODB_URI;
 
 if (!MONGO_URI) {
-    console.error('⚠️ Error: MONGODB_URI environment variable missing.');
+    console.error('Error: MONGODB_URI environment variable missing.');
 } else {
     mongoose
         .connect(MONGO_URI, { family: 4 })

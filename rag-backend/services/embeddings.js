@@ -1,4 +1,4 @@
-import { InferenceClient } from "@huggingface/inference"; // 👈 InferenceClient import karein
+import { InferenceClient } from "@huggingface/inference"; // InferenceClient import karein
 
 let hf = null;
 const getClient = () => {

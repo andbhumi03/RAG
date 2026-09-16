@@ -274,7 +274,7 @@ router.post("/query", authMiddleware, async (req, res) => {
 
     // 4. Autonomous Agent Loop Run Karein (ReAct Pattern)
     const agentResult = await runAgent(formattedMessages, req.userId, (step) => {
-      console.log(`⚡ Agent Step Event:`, step);
+      console.log('[Agent Step Event]:', step);
     });
 
     const cleanAnswer = redactSensitiveText(agentResult.finalAnswer);
@@ -379,11 +379,19 @@ router.post('/query-stream', authMiddleware, async (req, res) => {
         }
       },
       (token) => {
-        if (!closed && !res.writableEnded && token) {
+        if (closed || res.writableEnded) return false;
+        if (token) {
           hasStreamedTokens = true;
           const cleanChunk = token.replace(/\[Source:\s*[^\]]+\]/gi, '');
-          res.write(`data: ${JSON.stringify({ text: redactSensitiveText(cleanChunk) })}\n\n`);
+          const textToSend = redactSensitiveText(cleanChunk);
+          if (textToSend) {
+            res.write(`data: ${JSON.stringify({ text: textToSend })}\n\n`);
+            if (typeof res.flush === 'function') {
+              res.flush();
+            }
+          }
         }
+        return true;
       }
     );
     if (closed) return res.end();

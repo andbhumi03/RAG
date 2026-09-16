@@ -8,12 +8,6 @@ export function chunkText(text, chunkSize = 600, overlap = 120) {
     if (index >= separators.length) return "";
     return separators[index];
   }
-
-
-
-
-
-
   function split(text, index) {
     if (text.length <= chunkSize) return [text];
     const separator = getSeparator(text, index);
@@ -37,12 +31,10 @@ export function chunkText(text, chunkSize = 600, overlap = 120) {
         goodSplits.push(...split(s, index + 1));
       }
     }
-
     // Now merge the splits
     const merged = [];
     let currentDoc = [];
     let totalLength = 0;
-
     for (const s of goodSplits) {
       const len = s.length;
       const separatorLength = currentDoc.length > 0 ? separator.length : 0;
@@ -66,4 +58,6 @@ export function chunkText(text, chunkSize = 600, overlap = 120) {
   }
 
   return split(text, 0);
+
+
 }

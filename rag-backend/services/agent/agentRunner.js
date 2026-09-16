@@ -14,52 +14,90 @@ import {
  */
 function filterGroundedSources(answerText, collectedSources) {
     const sources = Array.from(collectedSources.values());
-    const answer = String(answerText || '');
-    if (!answer.trim() || /do not contain this information/i.test(answer)) {
+    const answer = String(answerText || '').toLowerCase().trim();
+    if (!answer || /do not contain this information/i.test(answer)) {
         return [];
     }
 
-    // Common non-discriminating filler words to ignore when measuring overlap
-    const genericNoise = new Set([
-        'the', 'and', 'for', 'was', 'with', 'from', 'this', 'that', 'have', 'has',
-        'had', 'not', 'are', 'were', 'been', 'which', 'their', 'there', 'they',
-        'what', 'when', 'where', 'who', 'how', 'per', 'details', 'information',
-        'document', 'uploaded', 'user', 'according', 'based', 'data'
-    ]);
+    if (sources.length === 0) {
+        return [];
+    }
 
-    const answerWords = answer.toLowerCase().match(/[a-z0-9_\-]{3,}/g) || [];
-    const answerTokens = new Set(answerWords.filter((w) => !genericNoise.has(w)));
+    // If only 1 document was retrieved by the agent search, return it directly
+    if (sources.length === 1) {
+        return [{ documentId: sources[0].documentId, fileName: sources[0].fileName }];
+    }
 
-    const rankedSources = sources.map((src, index) => {
-        const fileName = String(src.fileName || '').toLowerCase();
-        const baseName = fileName.replace(/\.[a-z0-9]+$/, '');
-        const excerptText = (src.excerpts || []).join(' ').toLowerCase();
-        const excerptTokens = new Set(
-            (excerptText.match(/[a-z0-9_\-]{3,}/g) || []).filter((w) => !genericNoise.has(w))
-        );
+    // For multiple retrieved documents: distinguish the truly grounded documents from noise
+    const cleanAnswer = answer.replace(/[^\w\s-]/g, ' ');
+    const answerWords = cleanAnswer.split(/\s+/).filter((w) => w.length >= 3);
 
-        let answerOverlap = 0;
-        for (const token of answerTokens) {
-            if (excerptTokens.has(token)) {
-                answerOverlap++;
+    if (answerWords.length === 0) {
+        return [{ documentId: sources[0].documentId, fileName: sources[0].fileName }];
+    }
+
+    const scoredSources = sources.map((src, index) => {
+        const excerptText = (src.excerpts || [])
+            .join(' ')
+            .toLowerCase()
+            .replace(/[^\w\s-]/g, ' ');
+        const excerptWordList = excerptText.split(/\s+/).filter((w) => w.length >= 3);
+        const excerptWordSet = new Set(excerptWordList);
+
+        // 1. Vocabulary overlap (distinct matching words)
+        let wordScore = 0;
+        const matchedWords = new Set();
+        for (const word of answerWords) {
+            if (excerptWordSet.has(word) && !matchedWords.has(word)) {
+                matchedWords.add(word);
+                // Longer content words give higher confidence
+                wordScore += word.length >= 5 ? 2 : 1;
             }
         }
-        const fileNameMatch = baseName && answer.toLowerCase().includes(baseName) ? 3 : 0;
-        return { src, score: answerOverlap + fileNameMatch, index };
+
+        // 2. Bigram phrase overlap (consecutive word matches)
+        let bigramScore = 0;
+        for (let i = 0; i < answerWords.length - 1; i++) {
+            const bigram = `${answerWords[i]} ${answerWords[i + 1]}`;
+            if (bigram.length >= 8 && excerptText.includes(bigram)) {
+                bigramScore += 2;
+            }
+        }
+
+        // 3. Document name mention bonus
+        let nameBonus = 0;
+        const baseName = String(src.fileName || '').toLowerCase().replace(/\.[a-z0-9]+$/, '');
+        if (baseName.length >= 4 && cleanAnswer.includes(baseName)) {
+            nameBonus += 5;
+        }
+
+        const totalScore = wordScore + bigramScore + nameBonus;
+
+        return {
+            src,
+            totalScore,
+            index
+        };
     });
-    const maxScore = Math.max(0, ...rankedSources.map((s) => s.score));
-    if (maxScore < 2) {
+
+    const maxScore = Math.max(0, ...scoredSources.map((s) => s.totalScore));
+
+    // If there is zero match with any retrieved document, return empty
+    if (maxScore === 0) {
         return [];
     }
 
-    // Relative threshold: Only retain documents that have at least 60% of the top score
-    // This cleanly discards unrelated documents that only matched 1 random word
-    const threshold = Math.max(2, maxScore * 0.6);
-    return rankedSources
-        .filter(({ score }) => score >= threshold)
-        .sort((left, right) => right.score - left.score || left.index - right.index)
+    // Only keep documents that achieve at least 45% of the top match score
+    const threshold = Math.max(1, maxScore * 0.45);
+
+    return scoredSources
+        .filter((item) => item.totalScore >= threshold)
+        .sort((a, b) => b.totalScore - a.totalScore || a.index - b.index)
         .slice(0, 3)
-        .map(({ src }) => ({ documentId: src.documentId, fileName: src.fileName }));
+        .map(({ src }) => ({
+            documentId: src.documentId,
+            fileName: src.fileName
+        }));
 }
 export async function runAgent(messages, userId, onStep = () => { }, onToken = null) {
     const MAX_ITERATIONS = 4;
@@ -184,12 +222,14 @@ CRITICAL RULES:
         }
 
         // 3. If no tool calls requested, the model has completed all searches and generated the final answer
-        console.log(`✅ [Agent Loop] Final answer generated successfully.`);
+        console.log(`[Agent Loop] Final answer generated successfully.`);
         const answerText = responseMessage.content || "The uploaded documents do not contain this information.";
         if (onToken && answerText) {
-            const tokens = answerText.match(/\S+\s*/g) || [answerText];
+            const tokens = answerText.trim().match(/\S+\s*/g) || [answerText];
             for (const token of tokens) {
-                onToken(token);
+                const keepGoing = onToken(token);
+                if (keepGoing === false) break;
+                await new Promise((resolve) => setTimeout(resolve, 25));
             }
         }
         return finish(answerText);
