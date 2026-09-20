@@ -1,24 +1,28 @@
-import { InferenceClient } from "@huggingface/inference"; // InferenceClient import karein
-
-let hf = null;
-const getClient = () => {
-  if (!hf) {
-    hf = new InferenceClient(process.env.HUGGINGFACE_API_KEY);
+import { pipeline } from "@huggingface/transformers";
+// Cache the pipeline so the model loads into memory only ONCE on first use,
+// then gets reused for every call after that (loading fresh per request
+// would be as wasteful as the OCR worker bug).
+let embedderPromise = null;
+const getEmbedder = () => {
+  if (!embedderPromise) {
+    embedderPromise = pipeline("feature-extraction", "Xenova/bge-small-en-v1.5").catch((err) => {
+      embedderPromise = null;
+      throw err;
+    });
   }
-  return hf;
+  return embedderPromise;
 };
-
 export const generateEmbedding = async (text) => {
   try {
-    const client = getClient();
-    const response = await client.featureExtraction({
-      model: "BAAI/bge-small-en-v1.5",
-      inputs: text,
-      provider: "hf-inference",
-    });
-    return Array.isArray(response[0]) ? response[0] : response;
+    const cleanText = String(text ?? '').trim() || ' ';
+    const embedder = await getEmbedder();
+    // mean pooling + normalization matches how bge models are meant to be used
+    const response = await embedder(cleanText, { pooling: "mean", normalize: true });
+    // response.data is a Float32Array — convert to a plain array,
+    // matching the same return shape your HF API version produced.
+    return Array.from(response.data);
   } catch (error) {
-    console.error("Hugging Face Embedding Error:", error);
+    console.error("Local Embedding Error:", error?.message || error);
     throw error;
   }
 };

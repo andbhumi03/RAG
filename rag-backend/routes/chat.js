@@ -5,7 +5,7 @@ import Chunk from '../models/Chunk.js';
 import Message from "../models/Messages.js";
 import authMiddleware from '../middleware/auth.js';
 import { generateAnswer } from '../services/groq.js';
-import { runAgent } from '../services/agent/agentRunner.js';
+import { runAgent, cleanMathFormatting, pruneConversationHistory } from '../services/agent/agentRunner.js';
 const router = express.Router();
 const MIN_RELEVANCE_SCORE = Number(process.env.RAG_MIN_RELEVANCE_SCORE || 0.20);
 const redactSensitiveText = (value) => String(value ?? '')
@@ -265,19 +265,19 @@ router.post("/query", authMiddleware, async (req, res) => {
       chatTitle = existingChat?.title || 'Document question';
     }
 
-    // 3. Pichli chat history nikal lein taaki agent ko context pata rahe (latest 10 messages)
+    // 3. Pichli chat history nikal lein taaki agent ko context pata rahe (budgeted & bounded)
     const pastMessages = (await Message.find({ chatId }).sort({ createdAt: -1 }).limit(10).lean()).reverse();
-    const formattedMessages = pastMessages.map(m => ({
+    const formattedMessages = pruneConversationHistory(pastMessages.map(m => ({
       role: m.role,
       content: m.content
-    }));
+    })));
 
     // 4. Autonomous Agent Loop Run Karein (ReAct Pattern)
     const agentResult = await runAgent(formattedMessages, req.userId, (step) => {
       console.log('[Agent Step Event]:', step);
     });
 
-    const cleanAnswer = redactSensitiveText(agentResult.finalAnswer);
+    const cleanAnswer = cleanMathFormatting(redactSensitiveText(agentResult.finalAnswer));
 
     // 5. Background mein Chat Title Update karein (agar pehli baar chat bani hai)
     if (chatTitle === 'New Chat' || chatTitle === makeTitleFallback(question)) {
@@ -361,12 +361,12 @@ router.post('/query-stream', authMiddleware, async (req, res) => {
     // 1. msg is saved in DB for user question
     await Message.create({ chatId, role: 'user', content: question });
     if (closed) return res.end();
-    // 2.latest 10 msg history for agent context
+    // 2. latest msg history for agent context (budgeted & bounded)
     const pastMessages = (await Message.find({ chatId }).sort({ createdAt: -1 }).limit(10).lean()).reverse();
-    const formattedMessages = pastMessages.map(m => ({
+    const formattedMessages = pruneConversationHistory(pastMessages.map(m => ({
       role: m.role,
       content: m.content
-    }));
+    })));
     if (closed) return res.end();
     // 3. Run Autonomous Agent Loop with live token streaming callback
     let hasStreamedTokens = false;
@@ -396,7 +396,7 @@ router.post('/query-stream', authMiddleware, async (req, res) => {
     );
     if (closed) return res.end();
     const rawAnswer = redactSensitiveText(agentResult.finalAnswer);
-    let cleanAnswer = rawAnswer.replace(/\[Source:\s*[^\]]+\]/gi, '').trim();
+    let cleanAnswer = cleanMathFormatting(rawAnswer.replace(/\[Source:\s*[^\]]+\]/gi, '').trim());
     if (!cleanAnswer) {
       cleanAnswer = FALLBACK_EMPTY_ANSWER;
     }

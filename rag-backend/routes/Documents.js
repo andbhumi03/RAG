@@ -210,7 +210,12 @@ router.delete('/:id', authMiddleware, async (req, res) => {
         error: 'Document not found or access denied (Unauthorized)'
       });
     }
-    await Chunk.deleteMany({ documentId: documentId, userId: userId });
+    await Chunk.deleteMany({
+      $or: [
+        { documentId: deletedDoc._id },
+        { documentId: documentId }
+      ]
+    });
     return res.json({
       documentId,
       deleted: true,

@@ -99,13 +99,125 @@ function filterGroundedSources(answerText, collectedSources) {
             fileName: src.fileName
         }));
 }
+
+/**
+ * Normalizes mathematical formulas and equations to clean, readable plain text.
+ * Strips raw LaTeX wrappers (\text, \mathrm, \frac, \times, etc.) and bracket delimiters.
+ */
+export function cleanMathFormatting(text) {
+    if (!text || typeof text !== 'string') return '';
+    let out = text;
+
+    // 1. Escaped symbols like \%, \$, \&
+    out = out.replace(/\\([%$&])/g, '$1');
+
+    // 2. Unpack \text{...}, \mathrm{...}, \mathbf{...}, \mathit{...} first so inner tags don't break outer patterns
+    for (let i = 0; i < 4; i++) {
+        out = out.replace(/\\(?:text|mathrm|mathbf|mathit)\{([^{}]+)\}/g, '$1');
+    }
+
+    // 3. LaTeX \left and \right delimiters
+    out = out.replace(/\\left\s*([(\[{|])/g, '$1');
+    out = out.replace(/\\right\s*([)\]}|])/g, '$1');
+
+    // 4. Fractions & Square roots
+    for (let i = 0; i < 3; i++) {
+        out = out.replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '($1 / $2)');
+    }
+    out = out.replace(/\\sqrt\{([^{}]+)\}/g, 'sqrt($1)');
+
+    // 5. Mathematical operators & symbols
+    out = out.replace(/\\times/g, '*');
+    out = out.replace(/\\cdot/g, '*');
+    out = out.replace(/\\div/g, '/');
+    out = out.replace(/\\pm/g, '+/-');
+    out = out.replace(/\\(?:leq|le)\b/g, '<=');
+    out = out.replace(/\\(?:geq|ge)\b/g, '>=');
+    out = out.replace(/\\neq\b/g, '!=');
+    out = out.replace(/\\approx\b/g, '~');
+    out = out.replace(/\\(?:quad|qquad)\b/g, ' ');
+    out = out.replace(/\\[,;:!]/g, ' ');
+
+    // 6. Subscripts & superscripts with curly braces
+    out = out.replace(/_\{([^{}]+)\}/g, '_$1');
+    out = out.replace(/\^\{([^{}]+)\}/g, '^$1');
+
+    // 7. LaTeX block delimiters: \[ ... \], \( ... \), $$ ... $$
+    out = out.replace(/\\\[\s*([\s\S]*?)\s*\\\]/g, '$1');
+    out = out.replace(/\\\(\s*([\s\S]*?)\s*\\\)/g, '$1');
+    out = out.replace(/\$\$\s*([\s\S]*?)\s*\$\$/g, '$1');
+
+    // 8. Single $ ... $ inline math (only if contains math operators to avoid currency collisions)
+    out = out.replace(/\$\s*([^$\n]*?[=+\-*/\\^][^$\n]*?)\s*\$/g, '$1');
+
+    // 9. Bracket wrappers surrounding equations: e.g. [ Net Salary = ... ] or [\n Net Salary = ... \n]
+    out = out.replace(/\[\s*([\s\S]*?=[^\[\]]*?)\s*\]/g, '$1');
+
+    // 10. Clean remaining stray LaTeX command backslashes and leftover isolated braces
+    out = out.replace(/\\([a-zA-Z]+)/g, '$1');
+    out = out.replace(/\{([^{}]+)\}/g, '$1');
+
+    // 11. Normalize multiple spaces on single lines and excess blank lines
+    out = out.replace(/[ \t]{2,}/g, ' ');
+    return out.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/**
+ * Prunes and bounds chat history to fit safely within LLM context windows & rate limits.
+ * - Always preserves the latest message (the current turn).
+ * - Caps individual historical messages (default: 1,500 chars / ~375 tokens).
+ * - Traverses backwards from most recent prior message to older messages.
+ * - Halts when total character budget (default: 10,000 chars / ~2,500 tokens) is reached.
+ */
+export function pruneConversationHistory(messages, options = {}) {
+    if (!Array.isArray(messages) || messages.length === 0) return [];
+
+    const maxTotalChars = options.maxTotalChars || 10000;
+    const maxMsgChars = options.maxMsgChars || 1500;
+    const maxCurrentMsgChars = options.maxCurrentMsgChars || 4000;
+
+    const latestMessage = messages[messages.length - 1];
+    const priorMessages = messages.slice(0, -1);
+
+    const formattedLatest = {
+        role: latestMessage.role,
+        content: String(latestMessage.content || '').slice(0, maxCurrentMsgChars)
+    };
+
+    let usedChars = formattedLatest.content.length;
+    const prunedPrior = [];
+
+    for (let i = priorMessages.length - 1; i >= 0; i--) {
+        const msg = priorMessages[i];
+        let content = String(msg.content || '').trim();
+        if (!content) continue;
+
+        if (content.length > maxMsgChars) {
+            content = content.slice(0, maxMsgChars) + '... [truncated]';
+        }
+
+        if (usedChars + content.length > maxTotalChars) {
+            break;
+        }
+
+        usedChars += content.length;
+        prunedPrior.unshift({
+            role: msg.role,
+            content
+        });
+    }
+
+    return [...prunedPrior, formattedLatest];
+}
+
 export async function runAgent(messages, userId, onStep = () => { }, onToken = null) {
+    const boundedMessages = pruneConversationHistory(messages);
     const MAX_ITERATIONS = 4;
     const collectedSources = new Map();
     const seenToolCalls = new Set();
     let agentSteps = [];
     // Extract user messages
-    const userMessages = messages.filter((m) => m.role === 'user');
+    const userMessages = boundedMessages.filter((m) => m.role === 'user');
     const latestUserMessage = userMessages[userMessages.length - 1]?.content || '';
     const priorUserMessage = userMessages.length > 1 ? userMessages[userMessages.length - 2]?.content || '' : '';
     const currentWords = String(latestUserMessage)
@@ -129,9 +241,9 @@ CRITICAL RULES:
 5.Use document_search for all document-related queries.
 6.Use calculate only for arithmetic when explicitly needed.
 7. Never simulate or fabricate tool outputs.
-8.STYLE: Be concise. Answer only the current question. Use clean Markdown only (no LaTeX).
+8. STYLE & MATH FORMATTING: Be concise. Answer only the current question. Never use LaTeX syntax (no \text{...}, no \times, no \frac, no \[...\], no \(...\), no $$). Write all formulas, equations, and calculations in clean, readable plain text (for example: Net Salary = Gross Salary - (Gross Salary * 0.12) - LWP Deduction).
 `   },
-        ...messages
+        ...boundedMessages
     ];
     const finish = (finalAnswer) => ({
         finalAnswer: finalAnswer || "The uploaded documents do not contain this information.",
@@ -204,6 +316,9 @@ CRITICAL RULES:
                     console.error(`[Agent Tool] Failed to execute ${functionName}:`, error.message);
                     toolResult = `Tool execution error: ${error.message}`;
                 }
+                if (typeof toolResult === 'string' && toolResult.length > 6000) {
+                    toolResult = toolResult.slice(0, 6000) + '\n... [additional search results truncated to preserve context budget]';
+                }
                 agentSteps.push({
                     tool: functionName,
                     input: functionArgs,
@@ -223,7 +338,8 @@ CRITICAL RULES:
 
         // 3. If no tool calls requested, the model has completed all searches and generated the final answer
         console.log(`[Agent Loop] Final answer generated successfully.`);
-        const answerText = responseMessage.content || "The uploaded documents do not contain this information.";
+        const rawContent = responseMessage.content || "The uploaded documents do not contain this information.";
+        const answerText = cleanMathFormatting(rawContent);
         if (onToken && answerText) {
             const tokens = answerText.trim().match(/\S+\s*/g) || [answerText];
             for (const token of tokens) {
@@ -251,7 +367,7 @@ CRITICAL RULES:
                 onToken(delta);
             }
         }
-        return finish(streamedAnswer);
+        return finish(cleanMathFormatting(streamedAnswer));
     } else {
         return finish("The uploaded documents do not contain this information.");
     }
