@@ -21,7 +21,6 @@ export function chunkText(text, chunkSize = 600, overlap = 120) {
       }
       return chunks;
     }
-
     const splits = text.split(separator);
     const goodSplits = [];
     for (const s of splits) {
@@ -58,6 +57,4 @@ export function chunkText(text, chunkSize = 600, overlap = 120) {
   }
 
   return split(text, 0);
-
-
 }

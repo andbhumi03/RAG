@@ -1,8 +1,6 @@
 import dotenv from 'dotenv';
 import { Groq } from 'groq-sdk';
-
 dotenv.config();
-
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 const CANDIDATE_MODELS = [
@@ -20,7 +18,6 @@ function isTransientError(error) {
   return [408, 429, 500, 502, 503, 504].includes(status) ||
     ['econnreset', 'econnrefused', 'etimedout', 'enotfound', 'fetch failed', 'network'].some((value) => message.includes(value));
 }
-
 async function withRetry(operation, label) {
   for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
     try {
@@ -33,7 +30,6 @@ async function withRetry(operation, label) {
     }
   }
 }
-
 function isModelAvailabilityError(err) {
   const msg = String(err?.message || '').toLowerCase();
   const code = String(err?.code || '').toLowerCase();
@@ -135,7 +131,6 @@ export async function getGroqChatCompletion({ messages, tools, tool_choice }) {
   }
   throw lastError;
 }
-
 // 4. Raw Chat Completion Stream with Fallback (For Agentic RAG Final Answer Streaming)
 export async function getGroqChatCompletionStream({ messages }) {
   let lastError = null;
