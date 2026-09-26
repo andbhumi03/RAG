@@ -13,38 +13,32 @@ export default function RagAssistant() {
     const chatEndRef = useRef(null);
     const fileInputRef = useRef(null);
 
-    const API_BASE = "http://localhost:5000/api/docs";
+    const baseApi = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/\/$/, "");
+    const API_BASE = `${baseApi}/docs`;
 
     useEffect(() => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, isQuerying]);
-
     // Handle Document Upload (POST /api/docs/upload)
     const handleFileUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-
         setIsUploading(true);
         setUploadStatus(`Uploading ${file.name}...`);
-
         const formData = new FormData();
         formData.append('file', file);
-
         const token = localStorage.getItem('token');
         const headers = {};
         if (token) {
             headers['Authorization'] = `Bearer ${token}`;
         }
-
         try {
             const res = await fetch(`${API_BASE}/upload`, {
                 method: 'POST',
                 headers,
                 body: formData,
             });
-
             const data = await res.json();
-
             if (res.ok) {
                 setUploadStatus(`Uploaded: ${file.name}`);
                 setMessages((prev) => [
@@ -117,7 +111,6 @@ export default function RagAssistant() {
             setIsQuerying(false);
         }
     };
-
     return (
         <div className="flex flex-col h-screen max-w-4xl mx-auto p-4 bg-gray-50">
             {/* Header & File Upload */}
@@ -178,7 +171,6 @@ export default function RagAssistant() {
                         </div>
                     </div>
                 ))}
-
                 {isQuerying && (
                     <div className="flex items-center gap-2 text-gray-500 text-sm italic">
                         <Loader2 className="w-4 h-4 animate-spin" /> Searching knowledge base...
@@ -186,7 +178,6 @@ export default function RagAssistant() {
                 )}
                 <div ref={chatEndRef} />
             </div>
-
             {/* Input Form */}
             <form onSubmit={handleSendQuery} className="mt-4 flex gap-2">
                 <input
