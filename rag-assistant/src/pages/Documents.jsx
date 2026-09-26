@@ -166,10 +166,8 @@ export default function Documents() {
   return (
     <Layout hideSidebar={true}>
       <div className="flex-1 flex flex-col h-full overflow-hidden bg-white relative">
-
         {/* Scroll Locked Dashboard Container */}
         <div className="flex-1 flex flex-col overflow-hidden max-w-6xl w-full mx-auto px-6 py-6">
-
           {/* Header Block */}
           <div className="mb-6 flex items-center justify-between border-b border-[#e3e8ef] pb-4 shrink-0">
             <div>
@@ -195,7 +193,6 @@ export default function Documents() {
               </svg>
             </button>
           </div>
-
           {/* Stable Static Alert Notification (Replaced floating popup) */}
           {toast.show && (
             <div className="mb-4 bg-[#f0f4f9] border border-[#a8c7fa] text-[#004a77] font-semibold text-xs py-2.5 px-4 rounded-xl flex items-center gap-2 shrink-0 transition-all">
@@ -249,7 +246,6 @@ export default function Documents() {
               )}
             </label>
           </div>
-
           {/* Documents Table Container */}
           <div className="flex-1 overflow-y-auto min-h-0 bg-[#f0f4f9]/30 rounded-3xl border border-[#e3e8ef]">
             {loading ? (

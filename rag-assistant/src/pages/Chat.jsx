@@ -213,12 +213,10 @@ export default function Chat() {
     e.stopPropagation();
     setDeleteTarget(chatId);
   };
-
   const confirmDeleteChat = async () => {
     const chatId = deleteTarget;
     setDeleteTarget(null);
     if (!chatId) return;
-
     try {
       await deleteChat(chatId);
       const updated = sessions.filter((s) => s._id !== chatId);
@@ -690,7 +688,6 @@ export default function Chat() {
               My Documents
             </button>
           </div>
-
           <div className="flex items-center gap-3">
             <div className="relative export-dropdown-container">
               <button
@@ -739,7 +736,6 @@ export default function Chat() {
             </div>
           </div>
         </header>
-
         {activeTab === "chat" ? (
           <div className="flex-1 flex flex-col overflow-hidden relative">
 
@@ -749,7 +745,6 @@ export default function Chat() {
                 {toast.message}
               </div>
             )}
-
             <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-6 space-y-6 max-w-6xl w-full mx-auto pb-10">
               {messages.length === 0 && (
                 <div className="h-full flex flex-col items-center justify-center text-center px-4 py-16 space-y-10 animate-fade-in mt-10">
@@ -764,7 +759,6 @@ export default function Chat() {
                       Ask questions grounded directly in your document index. The assistant will search the vector space and formulate a structured answer.
                     </p>
                   </div>
-
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-4xl w-full">
                     <button
                       onClick={() => handleSuggestionClick("Summarize the main points of my uploaded documents.")}
@@ -783,7 +777,6 @@ export default function Chat() {
                   </div>
                 </div>
               )}
-
               {messages.map((msg, i) => {
                 const isUser = msg.sender ? msg.sender === "user" : msg.role === "user";
                 return (
@@ -1145,7 +1138,6 @@ export default function Chat() {
           </div>
         </div>
       )}
-
     </Layout>
   );
 }

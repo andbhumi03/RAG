@@ -9,7 +9,6 @@ export default function Layout({ children, chatSidebarProps, hideSidebar = false
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   const shouldHideSidebar = hideSidebar || location.pathname === "/documents";
-
   // Swipe Back Gesture Handling (Left to Right from edge)
   useEffect(() => {
     let touchStartX = 0;
@@ -28,27 +27,22 @@ export default function Layout({ children, chatSidebarProps, hideSidebar = false
 
       const deltaX = touchEndX - touchStartX;
       const deltaY = Math.abs(touchEndY - touchStartY);
-
       // Trigger back navigation if swiped from left edge (>120px right) and vertical movement is minimal (<70px)
       if (touchStartX < 70 && deltaX > 120 && deltaY < 70) {
         navigate(-1);
       }
     };
-
     window.addEventListener("touchstart", handleTouchStart, { passive: true });
     window.addEventListener("touchend", handleTouchEnd, { passive: true });
-
     return () => {
       window.removeEventListener("touchstart", handleTouchStart);
       window.removeEventListener("touchend", handleTouchEnd);
     };
   }, [navigate]);
-
   const handleLogout = () => {
     logout();
     navigate("/login");
   };
-
   const navItems = [
     {
       to: "/chat",
@@ -69,7 +63,6 @@ export default function Layout({ children, chatSidebarProps, hideSidebar = false
       )
     }
   ];
-
   return (
     <div className="min-h-screen bg-white flex font-sans antialiased text-[#1f1f1f] overflow-hidden">
       {/* Sidebar container */}
@@ -94,7 +87,6 @@ export default function Layout({ children, chatSidebarProps, hideSidebar = false
                 </div>
               )}
             </div>
-
             <button
               onClick={() => setIsCollapsed(!isCollapsed)}
               className="p-1.5 rounded-lg text-[#5f6368] hover:bg-[#e3e8ef] hover:text-[#1f1f1f] transition-colors cursor-pointer"
@@ -106,7 +98,6 @@ export default function Layout({ children, chatSidebarProps, hideSidebar = false
               </svg>
             </button>
           </div>
-
           {/* Primary Navigation */}
           <div className="py-4">
             {!isCollapsed && (

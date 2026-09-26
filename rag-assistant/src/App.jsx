@@ -7,10 +7,8 @@ import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Documents from "./pages/Documents";
 import Chat from "./pages/Chat";
-
 function AppRoutes() {
   const { user, loading } = useAuth();
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500 text-sm">
@@ -18,7 +16,6 @@ function AppRoutes() {
       </div>
     );
   }
-
   return (
     <BrowserRouter>
       <Routes>
@@ -46,7 +43,6 @@ function AppRoutes() {
     </BrowserRouter>
   );
 }
-
 export default function App() {
   return (
     <Provider store={store}>

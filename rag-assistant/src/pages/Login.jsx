@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -9,12 +8,10 @@ export default function Login() {
   const [error, setError] = useState("");
   const { login } = useAuth();
   const navigate = useNavigate();
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError("");
-
     try {
       await login(email, password);
       navigate("/documents");
@@ -24,7 +21,6 @@ export default function Login() {
       setLoading(false);
     }
   };
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-linear-to-tr from-slate-50 to-indigo-50/30 p-6 font-sans">
       <form
@@ -62,7 +58,6 @@ export default function Login() {
               className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-xs bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-slate-800 placeholder-slate-400"
             />
           </div>
-
           <div>
             <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
               Secure Password
@@ -77,7 +72,6 @@ export default function Login() {
             />
           </div>
         </div>
-
         {error && (
           <div className="mb-4 p-3 bg-rose-50 border border-rose-100 rounded-xl text-xs font-semibold text-rose-600 flex items-center gap-2">
             <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
@@ -86,7 +80,6 @@ export default function Login() {
             <span>{error}</span>
           </div>
         )}
-
         <button
           type="submit"
           disabled={loading}

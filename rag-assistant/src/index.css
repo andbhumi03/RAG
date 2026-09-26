@@ -7,20 +7,17 @@
 	font-synthesis: none;
 	text-rendering: optimizeLegibility;
 }
-
 body {
 	margin: 0;
 	min-width: 320px;
 }
-
 button,
 input {
 	font: inherit;
 }
-
 button:focus-visible,
 a:focus-visible,
 input:focus-visible {
-	outline: 3px solid rgba(165, 14, 69, 0.868);
+	outline: 3px solid rgba(165, 14, 69, 0.35);
 	outline-offset: 2px;
 }
