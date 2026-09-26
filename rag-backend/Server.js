@@ -11,7 +11,7 @@ import chatRoutes from './routes/chat.js';
 const app = express();
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 40,
+    max: 120,
     message: { error: 'Too many requests, please try again later.' },
 });
 
