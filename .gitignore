@@ -1,21 +1,38 @@
-# Environment variables
+# Environment variables & secrets
 .env
 .env.*
 !.env.example
 .env.local
-.env copy
 
 # Dependencies
 node_modules/
+.pnp
+.pnp.js
 
-# Build
+# Production Builds
 dist/
+dist-ssr/
+build/
+*.local
 
-# Logs
+# Logs & Cache
 *.log
 npm-debug.log*
 yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 .cache/
 
-# System files
+# Editor / IDE directories
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Operating System Files
 .DS_Store
+Thumbs.db

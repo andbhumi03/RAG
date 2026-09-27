@@ -1,6 +1,18 @@
 {
-  "dependencies": {
-    "@huggingface/transformers": "^4.3.0",
-    "react-markdown": "^10.1.0"
+  "name": "rag-assistant-starter",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Document Intelligence RAG Assistant with autonomous agent and hybrid vector search",
+  "workspaces": [
+    "rag-backend",
+    "rag-assistant"
+  ],
+  "scripts": {
+    "build:frontend": "npm run build --workspace=rag-assistant",
+    "lint:frontend": "npm run lint --workspace=rag-assistant",
+    "check:backend": "node --check rag-backend/Server.js",
+    "start:backend": "npm start --workspace=rag-backend",
+    "dev:frontend": "npm run dev --workspace=rag-assistant",
+    "dev:backend": "npm run dev --workspace=rag-backend"
   }
 }
