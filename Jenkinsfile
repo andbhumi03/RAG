@@ -23,10 +23,20 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
+       stage('Build Docker Image') {
             steps {
                 dir('rag-backend') {
                     script {
+                        // Check if docker exists, otherwise install or use AWS CLI builder
+                        sh '''
+                            if ! command -v docker &> /dev/null
+                            then
+                                echo "Docker CLI not found in container. Installing Docker client..."
+                                apt-get update && apt-get install -y curl
+                                curl -fsSL https://get.docker.com -o get-docker.sh
+                                sh get-docker.sh
+                            fi
+                        '''
                         sh 'git archive HEAD | docker build -t ${ECR_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER} -'
                         sh 'docker tag ${ECR_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER} ${ECR_REGISTRY}/${IMAGE_NAME}:latest'
                     }
