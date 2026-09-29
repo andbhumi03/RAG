@@ -5,7 +5,6 @@ pipeline {
         AWS_REGION = 'us-east-1'
         ECR_REGISTRY = '018789813450.dkr.ecr.us-east-1.amazonaws.com'
         IMAGE_NAME = 'rag-backend'
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
         SONARQUBE_SERVER = 'SonarQube-Server'
     }
 
@@ -63,20 +62,25 @@ pipeline {
         stage('Push to Docker Hub') {
             steps {
                 dir('rag-backend') {
-                    script {
-                        echo 'Logging into Docker Hub...'
-                        sh "echo ${DOCKERHUB_CREDENTIALS_PSW} | docker login -u ${DOCKERHUB_CREDENTIALS_USR} --password-stdin"
+                    // Safe binding to prevent insecure interpolation warnings
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', 
+                                                      usernameVariable: 'DOCKERHUB_USR', 
+                                                      passwordVariable: 'DOCKERHUB_PSW')]) {
+                        script {
+                            echo 'Logging into Docker Hub...'
+                            sh "echo ${DOCKERHUB_PSW} | docker login -u ${DOCKERHUB_USR} --password-stdin"
 
-                        echo 'Building and tagging for Docker Hub...'
-                        sh "docker build -t bhuumika07/rag-backend:${BUILD_NUMBER} ."
-                        sh "docker tag bhuumika07/rag-backend:${BUILD_NUMBER} bhuumika07/rag-backend:latest"
+                            echo 'Building and tagging for Docker Hub...'
+                            sh "docker build -t bhuumika07/rag-backend:${BUILD_NUMBER} ."
+                            sh "docker tag bhuumika07/rag-backend:${BUILD_NUMBER} bhuumika07/rag-backend:latest"
 
-                        echo 'Pushing image to Docker Hub...'
-                        retry(3) {
-                            sh "docker push bhuumika07/rag-backend:${BUILD_NUMBER}"
-                        }
-                        retry(3) {
-                            sh "docker push bhuumika07/rag-backend:latest"
+                            echo 'Pushing image to Docker Hub...'
+                            retry(3) {
+                                sh "docker push bhuumika07/rag-backend:${BUILD_NUMBER}"
+                            }
+                            retry(3) {
+                                sh "docker push bhuumika07/rag-backend:latest"
+                            }
                         }
                     }
                 }
