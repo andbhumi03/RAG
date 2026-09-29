@@ -64,14 +64,19 @@ pipeline {
             steps {
                 dir('rag-backend') {
                     script {
+                        echo 'Logging into Docker Hub...'
+                        sh "echo ${DOCKERHUB_CREDENTIALS_PSW} | docker login -u ${DOCKERHUB_CREDENTIALS_USR} --password-stdin"
+
+                        echo 'Building and tagging for Docker Hub...'
+                        sh "docker build -t bhuumika07/rag-backend:${BUILD_NUMBER} ."
+                        sh "docker tag bhuumika07/rag-backend:${BUILD_NUMBER} bhuumika07/rag-backend:latest"
+
                         echo 'Pushing image to Docker Hub...'
-                        docker.withRegistry('https://index.docker.io/v1/', 'DOCKERHUB_CREDENTIALS') {
-                            def customImage = docker.image("bhuumika07/rag-backend:${BUILD_NUMBER}")
-                            customImage.build(".")
-                            customImage.push()
-                            
-                            def latestImage = docker.image("bhuumika07/rag-backend:latest")
-                            latestImage.push()
+                        retry(3) {
+                            sh "docker push bhuumika07/rag-backend:${BUILD_NUMBER}"
+                        }
+                        retry(3) {
+                            sh "docker push bhuumika07/rag-backend:latest"
                         }
                     }
                 }
