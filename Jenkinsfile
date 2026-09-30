@@ -59,32 +59,6 @@ pipeline {
             }
         }
 
-        stage('Push to Docker Hub') {
-            steps {
-                dir('rag-backend') {
-                    withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', 
-                                                        usernameVariable: 'DOCKERHUB_USR', 
-                                                        passwordVariable: 'DOCKERHUB_PSW')]) {
-                        script {
-                            echo 'Logging into Docker Hub...'
-                            sh "echo ${DOCKERHUB_PSW} | docker login -u ${DOCKERHUB_USR} --password-stdin"
-
-                            echo 'Building with BuildKit for optimized layer compression...'
-                            // DOCKER_BUILDKIT enable karne se layers choti aur optimized banti hain
-                            sh "export DOCKER_BUILDKIT=1 && docker build -t bhuumika07/rag-backend:${BUILD_NUMBER} ."
-                            sh "docker tag bhuumika07/rag-backend:${BUILD_NUMBER} bhuumika07/rag-backend:latest"
-
-                            echo 'Pushing image to Docker Hub with timeout protection...'
-                            timeout(time: 8, unit: 'MINUTES') {
-                                sh "docker push bhuumika07/rag-backend:${BUILD_NUMBER}"
-                                sh "docker push bhuumika07/rag-backend:latest"
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         stage('Deploy to AWS ECS Fargate') {
             steps {
                 withCredentials([aws(credentialsId: 'aws-credentials', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
